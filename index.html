@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DayFlow Planner</title>
+    <link rel="apple-touch-icon" href="icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+
+    <header class="colorful-header">
+        <h1>✨ DayFlow</h1>
+        <div id="updateIcon" onclick="window.location.reload()" style="display: none; cursor: pointer; font-size: 20px;">🔄</div>
+    </header>
+
+    <div class="container">
+        <button onclick="showForm()" class="btn-new">📝 Log Today</button>
+
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="🔍 Search entries by keywords..." autocomplete="off">
+        </div>
+
+        <div id="entryList" class="entry-list"></div>
+
+        <div id="entryFormModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="formTitle">Daily Entry</h3>
+                    <button onclick="closeForm()" class="btn-close">✖</button>
+                </div>
+                
+                <form id="entryForm">
+                    <input type="hidden" id="entryId">
+                    
+                    <div style="padding: 15px; background: white; border-radius: 10px; margin-bottom: 15px;">
+                        <label style="font-weight: bold; color: #555;">Date:</label>
+                        <input type="date" id="entryDate" required style="margin-top: 5px;">
+                    </div>
+
+                    <div class="section-card timetable-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h4>⏰ Timetable</h4>
+                            <button type="button" onclick="addTimeSlot()" class="btn-ghost">+ Add Slot</button>
+                        </div>
+                        <div id="timetableContainer" style="margin-top: 10px;">
+                            </div>
+                    </div>
+
+                    <div class="section-card journal-card" style="margin-top: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4>📖 What did I do today?</h4>
+                            <div class="mini-toolbar">
+                                <span onclick="undoText('journalBody')">Undo</span>
+                                <span onclick="clearText('journalBody')">Clear</span>
+                            </div>
+                        </div>
+                        <textarea id="journalBody" rows="8" placeholder="Write your reflections, achievements, and thoughts here..."></textarea>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" style="background-color: #4CAF50; color: white;">Save</button>
+                        <button type="button" onclick="generatePDF()" style="background-color: #1976D2; color: white;">Export PDF</button>
+                        <button type="button" id="deleteBtn" onclick="deleteCurrentEntry()" style="background-color: #D32F2F; color: white; display: none;">Delete</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="pdfTemplate" class="pdf-template hidden-print">
+        <h1 style="color: #FF4081; border-bottom: 2px solid #FF4081; padding-bottom: 10px;">DayFlow Report</h1>
+        <h2>Date: <span id="pdfDate"></span></h2>
+        
+        <h3 style="color: #3F51B5; margin-top: 20px;">Timetable</h3>
+        <table id="pdfTimetable" style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+            </table>
+
+        <h3 style="color: #009688;">Journal Explanation</h3>
+        <p id="pdfJournal" style="white-space: pre-wrap; line-height: 1.6; color: #333;"></p>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
