@@ -9,6 +9,46 @@ let currentTimerInterval = null;
 let currentOpenedEntryId = null;
 const gradients = ['var(--grad-card-1)', 'var(--grad-card-2)', 'var(--grad-card-3)', 'var(--grad-card-4)'];
 
+// --- DATE HELPER ---
+function getLocalISODate() {
+    const today = new Date();
+    const offset = today.getTimezoneOffset() * 60000;
+    return (new Date(today - offset)).toISOString().split('T')[0];
+}
+
+// --- HOME SCREEN TARGET LOGIC ---
+async function loadHomeTarget() {
+    const todayStr = getLocalISODate();
+    const entry = await db.entries.where('date').equals(todayStr).first();
+    const targetInput = document.getElementById('homeDailyTarget');
+    if(entry && entry.target) {
+        targetInput.value = entry.target;
+    } else {
+        targetInput.value = '';
+    }
+}
+
+window.saveHomeTarget = async () => {
+    const todayStr = getLocalISODate();
+    const targetVal = document.getElementById('homeDailyTarget').value.trim();
+    
+    let entry = await db.entries.where('date').equals(todayStr).first();
+    if(entry) {
+        entry.target = targetVal;
+        await db.entries.put(entry);
+    } else {
+        await db.entries.add({
+            date: todayStr,
+            target: targetVal,
+            targetStatus: 'pending',
+            journal: '',
+            timetable: []
+        });
+    }
+    topToast.fire({ text: 'Target saved for today!' });
+    loadEntries();
+};
+
 // --- UI HELPERS ---
 function openForm(id = null) {
     document.getElementById('formModal').classList.remove('hidden');
@@ -18,8 +58,7 @@ function openForm(id = null) {
     if(!id) {
         document.getElementById('entryForm').reset();
         document.getElementById('entryId').value = "";
-        document.getElementById('entryDate').valueAsDate = new Date();
-        document.getElementById('dailyTarget').value = "";
+        document.getElementById('entryDate').value = getLocalISODate();
         document.getElementById('timetableContainer').innerHTML = '';
         addTimeSlot();
     }
@@ -28,7 +67,20 @@ function openForm(id = null) {
 function closeForm() { document.getElementById('formModal').classList.add('hidden'); document.body.style.overflow = 'auto'; loadEntries(); }
 function closeView() { document.getElementById('viewModal').classList.add('hidden'); document.body.style.overflow = 'auto'; clearInterval(currentTimerInterval); }
 
-// --- FORM BUILDER ---
+// --- FORM BUILDER & AUTOFILL ---
+window.autofillHeading = async (btnElement) => {
+    const selectedDate = document.getElementById('entryDate').value;
+    const entry = await db.entries.where('date').equals(selectedDate).first();
+    
+    if (entry && entry.target) {
+        // Find the input right below this label block
+        const headingInput = btnElement.parentElement.parentElement.querySelector('.ts-heading');
+        headingInput.value = entry.target;
+    } else {
+        topToast.fire({ text: 'No target set for this date yet!', background: '#FF9800' });
+    }
+};
+
 function addTimeSlot(slot = {}) {
     const container = document.getElementById('timetableContainer');
     const slotId = slot.id || 'slot_' + Date.now() + Math.random().toString(36).substr(2, 5);
@@ -43,7 +95,13 @@ function addTimeSlot(slot = {}) {
         <button type="button" class="btn-remove-slot" onclick="this.parentElement.remove()">✖ Remove</button>
         <div style="display: flex; gap: 10px;">
             <div style="flex: 0 0 100px;"><label style="font-size:12px;">Start Time</label><input type="time" class="ts-time" value="${slot.time || ''}" required></div>
-            <div style="flex: 1;"><label style="font-size:12px;">Topic Heading</label><input type="text" class="ts-heading" value="${slot.heading || ''}" placeholder="E.g., Project Planning" required></div>
+            <div style="flex: 1;">
+                <label style="font-size:12px; display:flex; justify-content:space-between; align-items:center;">
+                    Topic Heading 
+                    <span style="color:#FF9800; cursor:pointer; font-weight:bold;" onclick="autofillHeading(this)">🎯 Use Target</span>
+                </label>
+                <input type="text" class="ts-heading" value="${slot.heading || ''}" placeholder="E.g., Project Planning" required>
+            </div>
         </div>
         <label style="font-size:12px; margin-top:5px; display:block;">Description / Text</label>
         <textarea class="ts-desc" rows="2" placeholder="What exactly will you do?">${slot.desc || ''}</textarea>
@@ -53,23 +111,17 @@ function addTimeSlot(slot = {}) {
     container.appendChild(div);
 }
 
-// --- SAVE ENTRY ---
+// --- SAVE ENTRY (Day Plan) ---
 document.getElementById('entryForm').onsubmit = async (e) => {
     e.preventDefault();
     const id = document.getElementById('entryId').value;
     const date = document.getElementById('entryDate').value;
-    const target = document.getElementById('dailyTarget').value.trim();
     const journal = document.getElementById('journalBody').value.trim();
     
-    // Check for existing target status to preserve it
-    let targetStatus = 'pending';
-    if(id) {
-        const existing = await db.entries.get(parseInt(id));
-        if(existing) targetStatus = existing.targetStatus || 'pending';
-    } else {
-        const existing = await db.entries.where('date').equals(date).first();
-        if(existing) targetStatus = existing.targetStatus || 'pending';
-    }
+    // Preserve the target if it already exists
+    let existing = await db.entries.where('date').equals(date).first();
+    let target = existing ? (existing.target || '') : '';
+    let targetStatus = existing ? (existing.targetStatus || 'pending') : 'pending';
     
     const slotElements = document.querySelectorAll('.slot-builder');
     let timetable = [];
@@ -91,7 +143,6 @@ document.getElementById('entryForm').onsubmit = async (e) => {
     if (id) {
         await db.entries.update(parseInt(id), data);
     } else {
-        const existing = await db.entries.where('date').equals(date).first();
         if(existing) await db.entries.update(existing.id, data);
         else await db.entries.add(data);
     }
@@ -128,6 +179,8 @@ window.deleteEntry = async (id) => {
 
 // --- HOME SCREEN LOAD ---
 async function loadEntries() {
+    loadHomeTarget(); // Refresh the home target box
+    
     const query = document.getElementById('searchInput').value.toLowerCase();
     let entries = await db.entries.orderBy('date').reverse().toArray();
     
@@ -142,11 +195,14 @@ async function loadEntries() {
     
     let html = "";
     entries.forEach((entry, idx) => {
+        // Skip rendering if it's completely empty (only created to hold a target temporarily)
+        if(!entry.target && (!entry.timetable || entry.timetable.length === 0) && !entry.journal) return;
+
         const bg = gradients[idx % gradients.length];
         const d = new Date(entry.date);
         const displayDate = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
         
-        let topicsText = entry.timetable.length ? entry.timetable.map(t => t.heading).join(', ') : 'No topics planned.';
+        let topicsText = (entry.timetable && entry.timetable.length) ? entry.timetable.map(t => t.heading).join(', ') : 'No topics planned.';
         
         let targetHtml = '';
         if(entry.target) {
@@ -192,10 +248,9 @@ async function openDayView(id) {
     document.getElementById('btnEditDay').onclick = () => {
         document.getElementById('entryId').value = entry.id;
         document.getElementById('entryDate').value = entry.date;
-        document.getElementById('dailyTarget').value = entry.target || "";
         document.getElementById('journalBody').value = entry.journal || "";
         document.getElementById('timetableContainer').innerHTML = "";
-        entry.timetable.forEach(t => addTimeSlot(t));
+        if(entry.timetable) entry.timetable.forEach(t => addTimeSlot(t));
         openForm(entry.id);
     };
 
@@ -224,56 +279,58 @@ function renderDayViewHTML(entry) {
         </div>`;
     }
 
-    entry.timetable.forEach(slot => {
-        let formattedLink = slot.link;
-        if(formattedLink && !formattedLink.startsWith('http://') && !formattedLink.startsWith('https://')) formattedLink = 'https://' + formattedLink;
-        let linkHtml = formattedLink ? `<a href="${formattedLink}" target="_blank" class="view-link">🔗 Open Topic Link</a>` : '';
-        
-        let activeClass = slot.status === 'active' ? 'timer-active' : '';
-        let idleClass = slot.status === 'paused' ? 'timer-idle' : '';
-        
-        let logsHtml = '';
-        if(slot.logs && slot.logs.length > 0) {
-            logsHtml = `<div class="timer-logs"><strong>History:</strong><br>`;
-            for(let i = slot.logs.length - 1; i >= 0; i--) {
-                let log = slot.logs[i];
-                const timeStr = new Date(log.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                let emoji = log.type === 'started' ? '▶️' : (log.type === 'paused' ? '⏸️' : '⏹️');
-                logsHtml += `<div class="log-item">${emoji} ${log.type.toUpperCase()} at ${timeStr}</div>`;
-            }
-            logsHtml += `</div>`;
-        }
-
-        html += `
-        <div class="view-topic">
-            <p style="font-weight:bold; color:#667eea; margin-bottom:5px;">🕒 ${slot.time}</p>
-            <h4>${slot.heading}</h4>
-            <p>${slot.desc}</p>
-            ${linkHtml}
+    if(entry.timetable) {
+        entry.timetable.forEach(slot => {
+            let formattedLink = slot.link;
+            if(formattedLink && !formattedLink.startsWith('http://') && !formattedLink.startsWith('https://')) formattedLink = 'https://' + formattedLink;
+            let linkHtml = formattedLink ? `<a href="${formattedLink}" target="_blank" class="view-link">🔗 Open Topic Link</a>` : '';
             
-            <div style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 15px;">
-                <div class="timer-dashboard">
-                    <div class="stat-box active-box ${activeClass}">
-                        <span class="stat-label">Active Time</span>
-                        <div id="active_display_${slot.id}" class="timer-display">00:00:00</div>
-                    </div>
-                    <div class="stat-box idle-box ${idleClass}">
-                        <span class="stat-label">Idle Time</span>
-                        <div id="idle_display_${slot.id}" class="timer-display">00:00:00</div>
-                    </div>
-                </div>
+            let activeClass = slot.status === 'active' ? 'timer-active' : '';
+            let idleClass = slot.status === 'paused' ? 'timer-idle' : '';
+            
+            let logsHtml = '';
+            if(slot.logs && slot.logs.length > 0) {
+                logsHtml = `<div class="timer-logs"><strong>History:</strong><br>`;
+                for(let i = slot.logs.length - 1; i >= 0; i--) {
+                    let log = slot.logs[i];
+                    const timeStr = new Date(log.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                    let emoji = log.type === 'started' ? '▶️' : (log.type === 'paused' ? '⏸️' : '⏹️');
+                    logsHtml += `<div class="log-item">${emoji} ${log.type.toUpperCase()} at ${timeStr}</div>`;
+                }
+                logsHtml += `</div>`;
+            }
 
-                <div class="timer-controls">
-                    ${slot.status !== 'finished' ? 
-                        `<button style="background:#4CAF50; color:white;" onclick="handleTimer('${slot.id}', 'started')">▶️ Start/Resume</button>
-                         <button style="background:#FFC107; color:black;" onclick="handleTimer('${slot.id}', 'paused')">⏸️ Pause</button>
-                         <button style="background:#F44336; color:white;" onclick="handleTimer('${slot.id}', 'finished')">⏹️ Finish</button>`
-                    : `<span style="display:inline-block; background:#e8f5e9; color:#2e7d32; padding:8px 15px; border-radius:8px; font-weight:bold;">✅ Task Finished</span>` }
+            html += `
+            <div class="view-topic">
+                <p style="font-weight:bold; color:#667eea; margin-bottom:5px;">🕒 ${slot.time}</p>
+                <h4>${slot.heading}</h4>
+                <p>${slot.desc}</p>
+                ${linkHtml}
+                
+                <div style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 15px;">
+                    <div class="timer-dashboard">
+                        <div class="stat-box active-box ${activeClass}">
+                            <span class="stat-label">Active Time</span>
+                            <div id="active_display_${slot.id}" class="timer-display">00:00:00</div>
+                        </div>
+                        <div class="stat-box idle-box ${idleClass}">
+                            <span class="stat-label">Idle Time</span>
+                            <div id="idle_display_${slot.id}" class="timer-display">00:00:00</div>
+                        </div>
+                    </div>
+
+                    <div class="timer-controls">
+                        ${slot.status !== 'finished' ? 
+                            `<button style="background:#4CAF50; color:white;" onclick="handleTimer('${slot.id}', 'started')">▶️ Start/Resume</button>
+                             <button style="background:#FFC107; color:black;" onclick="handleTimer('${slot.id}', 'paused')">⏸️ Pause</button>
+                             <button style="background:#F44336; color:white;" onclick="handleTimer('${slot.id}', 'finished')">⏹️ Finish</button>`
+                        : `<span style="display:inline-block; background:#e8f5e9; color:#2e7d32; padding:8px 15px; border-radius:8px; font-weight:bold;">✅ Task Finished</span>` }
+                    </div>
+                    ${logsHtml}
                 </div>
-                ${logsHtml}
-            </div>
-        </div>`;
-    });
+            </div>`;
+        });
+    }
 
     document.getElementById('viewBody').innerHTML = html || "<p>No topics scheduled.</p>";
     updateLiveTimers(entry); 
@@ -290,25 +347,27 @@ function formatTime(ms) {
 
 function updateLiveTimers(entry) {
     const now = Date.now();
-    entry.timetable.forEach(slot => {
-        let activeMs = 0; let idleMs = 0; let lastStart = null; let lastPause = null;
-        slot.logs.forEach(log => {
-            if (log.type === 'started') {
-                lastStart = log.time;
-                if (lastPause !== null) { idleMs += (log.time - lastPause); lastPause = null; }
-            } else if (log.type === 'paused' || log.type === 'finished') {
-                if (lastStart !== null) { activeMs += (log.time - lastStart); lastStart = null; }
-                if (log.type === 'paused') lastPause = log.time;
-            }
-        });
-        if (slot.status === 'active' && lastStart !== null) activeMs += (now - lastStart);
-        else if (slot.status === 'paused' && lastPause !== null) idleMs += (now - lastPause);
+    if(entry.timetable) {
+        entry.timetable.forEach(slot => {
+            let activeMs = 0; let idleMs = 0; let lastStart = null; let lastPause = null;
+            slot.logs.forEach(log => {
+                if (log.type === 'started') {
+                    lastStart = log.time;
+                    if (lastPause !== null) { idleMs += (log.time - lastPause); lastPause = null; }
+                } else if (log.type === 'paused' || log.type === 'finished') {
+                    if (lastStart !== null) { activeMs += (log.time - lastStart); lastStart = null; }
+                    if (log.type === 'paused') lastPause = log.time;
+                }
+            });
+            if (slot.status === 'active' && lastStart !== null) activeMs += (now - lastStart);
+            else if (slot.status === 'paused' && lastPause !== null) idleMs += (now - lastPause);
 
-        const activeEl = document.getElementById(`active_display_${slot.id}`);
-        if (activeEl) activeEl.innerText = formatTime(activeMs);
-        const idleEl = document.getElementById(`idle_display_${slot.id}`);
-        if (idleEl) idleEl.innerText = formatTime(idleMs);
-    });
+            const activeEl = document.getElementById(`active_display_${slot.id}`);
+            if (activeEl) activeEl.innerText = formatTime(activeMs);
+            const idleEl = document.getElementById(`idle_display_${slot.id}`);
+            if (idleEl) idleEl.innerText = formatTime(idleMs);
+        });
+    }
 }
 
 window.handleTimer = async (slotId, action) => {
@@ -326,4 +385,5 @@ window.handleTimer = async (slotId, action) => {
     renderDayViewHTML(entry);
 };
 
+// Start logic
 loadEntries();

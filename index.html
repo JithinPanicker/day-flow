@@ -20,6 +20,14 @@
     </header>
 
     <div class="container">
+        <div class="home-target-card">
+            <h4 style="margin: 0 0 10px 0; color: #E65100;">🎯 Today's Target</h4>
+            <div style="display: flex; gap: 8px;">
+                <input type="text" id="homeDailyTarget" placeholder="Set your main goal for today..." style="margin: 0;">
+                <button onclick="saveHomeTarget()" style="background: #FF9800; color: white; padding: 10px 20px;">Set</button>
+            </div>
+        </div>
+
         <button onclick="openForm()" class="btn-new">📝 Plan & Log Today</button>
 
         <div class="search-box">
@@ -56,10 +64,7 @@
                 
                 <div class="section-card" style="margin-bottom: 15px;">
                     <label style="font-weight: bold; color: #555;">Date:</label>
-                    <input type="date" id="entryDate" required style="margin-top: 5px; margin-bottom: 15px;">
-
-                    <label style="font-weight: bold; color: #555;">🎯 Daily Target:</label>
-                    <input type="text" id="dailyTarget" placeholder="What is your main goal for today?" style="margin-top: 5px;">
+                    <input type="date" id="entryDate" required style="margin-top: 5px;">
                 </div>
 
                 <div class="section-card timetable-card">
