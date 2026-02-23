@@ -16,40 +16,98 @@ function getLocalISODate() {
     return (new Date(today - offset)).toISOString().split('T')[0];
 }
 
-// --- HOME SCREEN TARGET LOGIC ---
+// --- TARGET LOGIC (Row by Row) ---
 async function loadHomeTarget() {
     const todayStr = getLocalISODate();
     const entry = await db.entries.where('date').equals(todayStr).first();
-    const targetInput = document.getElementById('homeDailyTarget');
-    if(entry && entry.target) {
-        targetInput.value = entry.target;
-    } else {
-        targetInput.value = '';
+    const listDiv = document.getElementById('homeTargetsList');
+    
+    let targets = entry ? (entry.targets || []) : [];
+    
+    // Fallback migration for old single targets
+    if (entry && entry.target && targets.length === 0) {
+        targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending' }];
     }
+
+    if(targets.length === 0) {
+        listDiv.innerHTML = "<p style='color:#888; font-size:13px; margin:0;'>No targets set yet.</p>";
+        return;
+    }
+
+    let html = '';
+    targets.forEach(t => {
+        let strike = t.status === 'failed' ? 'text-decoration: line-through; opacity: 0.7;' : '';
+        html += `
+        <div class="target-box view-mode">
+            <div class="target-text" style="${strike}">${t.text}</div>
+            <div class="target-actions">
+                <button onclick="toggleTarget(${entry.id}, '${t.id}', 'completed', event)" class="btn-target ${t.status === 'completed' ? 'completed' : ''}">✅</button>
+                <button onclick="toggleTarget(${entry.id}, '${t.id}', 'failed', event)" class="btn-target ${t.status === 'failed' ? 'failed' : ''}">❌</button>
+                <button onclick="deleteTarget(${entry.id}, '${t.id}', event)" class="btn-target delete-tgt">🗑️</button>
+            </div>
+        </div>`;
+    });
+    listDiv.innerHTML = html;
 }
 
-window.saveHomeTarget = async () => {
-    const todayStr = getLocalISODate();
-    const targetVal = document.getElementById('homeDailyTarget').value.trim();
+window.addHomeTarget = async () => {
+    const text = document.getElementById('homeDailyTarget').value.trim();
+    if(!text) return;
     
+    const todayStr = getLocalISODate();
     let entry = await db.entries.where('date').equals(todayStr).first();
+    const newTarget = { id: Date.now().toString(), text: text, status: 'pending' };
+    
     if(entry) {
-        entry.target = targetVal;
+        if(!entry.targets) entry.targets = [];
+        entry.targets.push(newTarget);
         await db.entries.put(entry);
     } else {
-        await db.entries.add({
-            date: todayStr,
-            target: targetVal,
-            targetStatus: 'pending',
-            journal: '',
-            timetable: []
-        });
+        await db.entries.add({ date: todayStr, targets: [newTarget], journal: '', timetable: [] });
     }
-    topToast.fire({ text: 'Target saved for today!' });
+    
+    document.getElementById('homeDailyTarget').value = '';
+    loadHomeTarget();
     loadEntries();
 };
 
-// --- UI HELPERS ---
+window.toggleTarget = async (entryId, targetId, status, event) => {
+    if(event) event.stopPropagation();
+    const entry = await db.entries.get(entryId);
+    
+    // Migration check
+    let targets = entry.targets || [];
+    if(entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending' }];
+    
+    const target = targets.find(t => t.id === targetId);
+    if(target) {
+        target.status = target.status === status ? 'pending' : status;
+        entry.targets = targets;
+        await db.entries.put(entry);
+        loadHomeTarget();
+        loadEntries();
+        if(!document.getElementById('viewModal').classList.contains('hidden') && currentOpenedEntryId === entryId) {
+            renderDayViewHTML(entry);
+        }
+    }
+};
+
+window.deleteTarget = async (entryId, targetId, event) => {
+    if(event) event.stopPropagation();
+    const entry = await db.entries.get(entryId);
+    let targets = entry.targets || [];
+    if(entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending' }];
+    
+    entry.targets = targets.filter(t => t.id !== targetId);
+    await db.entries.put(entry);
+    loadHomeTarget();
+    loadEntries();
+    if(!document.getElementById('viewModal').classList.contains('hidden') && currentOpenedEntryId === entryId) {
+        renderDayViewHTML(entry);
+    }
+};
+
+// --- FORM UI HELPERS ---
 function openForm(id = null) {
     document.getElementById('formModal').classList.remove('hidden');
     document.getElementById('viewModal').classList.add('hidden');
@@ -67,17 +125,36 @@ function openForm(id = null) {
 function closeForm() { document.getElementById('formModal').classList.add('hidden'); document.body.style.overflow = 'auto'; loadEntries(); }
 function closeView() { document.getElementById('viewModal').classList.add('hidden'); document.body.style.overflow = 'auto'; clearInterval(currentTimerInterval); }
 
-// --- FORM BUILDER & AUTOFILL ---
+// --- SMART AUTOFILL (Dropdown) ---
 window.autofillHeading = async (btnElement) => {
     const selectedDate = document.getElementById('entryDate').value;
     const entry = await db.entries.where('date').equals(selectedDate).first();
+    let targets = entry ? (entry.targets || []) : [];
+    if(entry && entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: 'pending' }];
     
-    if (entry && entry.target) {
-        // Find the input right below this label block
-        const headingInput = btnElement.parentElement.parentElement.querySelector('.ts-heading');
-        headingInput.value = entry.target;
+    if (targets.length === 1) {
+        const headingInput = btnElement.closest('.slot-builder').querySelector('.ts-heading');
+        headingInput.value = targets[0].text;
+    } else if (targets.length > 1) {
+        // Multi-select using SweetAlert
+        let options = {};
+        targets.forEach(t => options[t.id] = t.text);
+        
+        const { value: targetId } = await Swal.fire({
+            title: 'Select a Target',
+            input: 'select',
+            inputOptions: options,
+            inputPlaceholder: 'Choose goal...',
+            showCancelButton: true,
+            confirmButtonColor: '#4CAF50'
+        });
+        
+        if (targetId) {
+            const headingInput = btnElement.closest('.slot-builder').querySelector('.ts-heading');
+            headingInput.value = targets.find(t => t.id === targetId).text;
+        }
     } else {
-        topToast.fire({ text: 'No target set for this date yet!', background: '#FF9800' });
+        topToast.fire({ text: 'No targets set for this date!', background: '#FF9800' });
     }
 };
 
@@ -100,7 +177,7 @@ function addTimeSlot(slot = {}) {
                     Topic Heading 
                     <span style="color:#FF9800; cursor:pointer; font-weight:bold;" onclick="autofillHeading(this)">🎯 Use Target</span>
                 </label>
-                <input type="text" class="ts-heading" value="${slot.heading || ''}" placeholder="E.g., Project Planning" required>
+                <input type="text" class="ts-heading" value="${slot.heading || ''}" placeholder="E.g., Math Study" required>
             </div>
         </div>
         <label style="font-size:12px; margin-top:5px; display:block;">Description / Text</label>
@@ -118,10 +195,10 @@ document.getElementById('entryForm').onsubmit = async (e) => {
     const date = document.getElementById('entryDate').value;
     const journal = document.getElementById('journalBody').value.trim();
     
-    // Preserve the target if it already exists
+    // Preserve targets list
     let existing = await db.entries.where('date').equals(date).first();
-    let target = existing ? (existing.target || '') : '';
-    let targetStatus = existing ? (existing.targetStatus || 'pending') : 'pending';
+    let targets = existing ? (existing.targets || []) : [];
+    if(existing && existing.target && targets.length === 0) targets = [{ id: 'legacy', text: existing.target, status: existing.targetStatus || 'pending' }];
     
     const slotElements = document.querySelectorAll('.slot-builder');
     let timetable = [];
@@ -138,7 +215,7 @@ document.getElementById('entryForm').onsubmit = async (e) => {
         });
     });
 
-    const data = { date, target, targetStatus, journal, timetable };
+    const data = { date, targets, journal, timetable };
 
     if (id) {
         await db.entries.update(parseInt(id), data);
@@ -151,27 +228,12 @@ document.getElementById('entryForm').onsubmit = async (e) => {
     topToast.fire({ text: 'Day Saved!' });
 };
 
-// --- QUICK TOGGLE TARGET STATUS ---
-window.toggleTarget = async (id, status, event) => {
-    event.stopPropagation(); // Prevents clicking the card and opening the modal
-    const entry = await db.entries.get(id);
-    if(entry.targetStatus === status) {
-        entry.targetStatus = 'pending'; // Toggle off if clicked twice
-    } else {
-        entry.targetStatus = status;
-    }
-    await db.entries.put(entry);
-    loadEntries();
-};
-
 // --- DELETE INSTANTLY ---
 window.deleteEntry = async (id) => {
     Swal.fire({ title: 'Delete Day?', showCancelButton: true, confirmButtonText: 'Yes, Delete', confirmButtonColor: '#d32f2f' }).then(async (res) => {
         if(res.isConfirmed) { 
             await db.entries.delete(parseInt(id)); 
-            closeView();
-            closeForm();
-            loadEntries(); 
+            closeView(); closeForm(); loadEntries(); 
             topToast.fire({ text: 'Deleted successfully!' });
         }
     });
@@ -179,7 +241,7 @@ window.deleteEntry = async (id) => {
 
 // --- HOME SCREEN LOAD ---
 async function loadEntries() {
-    loadHomeTarget(); // Refresh the home target box
+    loadHomeTarget();
     
     const query = document.getElementById('searchInput').value.toLowerCase();
     let entries = await db.entries.orderBy('date').reverse().toArray();
@@ -188,15 +250,19 @@ async function loadEntries() {
         entries = entries.filter(e => {
             const d = new Date(e.date);
             const dateStr = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toLowerCase();
-            const textToSearch = dateStr + " " + (e.target||"").toLowerCase() + " " + e.journal.toLowerCase() + " " + e.timetable.map(t => t.heading.toLowerCase() + " " + t.desc.toLowerCase()).join(" ");
+            let tgtString = e.targets ? e.targets.map(t=>t.text.toLowerCase()).join(" ") : ((e.target||"").toLowerCase());
+            const textToSearch = dateStr + " " + tgtString + " " + (e.journal||"").toLowerCase() + " " + (e.timetable ? e.timetable.map(t => t.heading.toLowerCase() + " " + t.desc.toLowerCase()).join(" ") : "");
             return textToSearch.includes(query);
         });
     }
     
     let html = "";
     entries.forEach((entry, idx) => {
-        // Skip rendering if it's completely empty (only created to hold a target temporarily)
-        if(!entry.target && (!entry.timetable || entry.timetable.length === 0) && !entry.journal) return;
+        let targets = entry.targets || [];
+        if(entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending' }];
+
+        // Hide completely empty logs
+        if(targets.length === 0 && (!entry.timetable || entry.timetable.length === 0) && !entry.journal) return;
 
         const bg = gradients[idx % gradients.length];
         const d = new Date(entry.date);
@@ -205,22 +271,26 @@ async function loadEntries() {
         let topicsText = (entry.timetable && entry.timetable.length) ? entry.timetable.map(t => t.heading).join(', ') : 'No topics planned.';
         
         let targetHtml = '';
-        if(entry.target) {
-            let strike = entry.targetStatus === 'failed' ? 'text-decoration: line-through; opacity: 0.7;' : '';
-            targetHtml = `
-            <div class="target-box" onclick="event.stopPropagation()">
-                <div class="target-text" style="${strike}">🎯 ${entry.target}</div>
-                <div class="target-actions">
-                    <button onclick="toggleTarget(${entry.id}, 'completed', event)" class="btn-target ${entry.targetStatus === 'completed' ? 'completed' : ''}">✅</button>
-                    <button onclick="toggleTarget(${entry.id}, 'failed', event)" class="btn-target ${entry.targetStatus === 'failed' ? 'failed' : ''}">❌</button>
-                </div>
-            </div>`;
+        if(targets.length > 0) {
+            targetHtml += `<div class="targets-container">`;
+            targets.forEach(t => {
+                let strike = t.status === 'failed' ? 'text-decoration: line-through; opacity: 0.7;' : '';
+                targetHtml += `
+                <div class="target-box" onclick="event.stopPropagation()">
+                    <div class="target-text" style="${strike}">🎯 ${t.text}</div>
+                    <div class="target-actions">
+                        <button onclick="toggleTarget(${entry.id}, '${t.id}', 'completed', event)" class="btn-target ${t.status === 'completed' ? 'completed' : ''}">✅</button>
+                        <button onclick="toggleTarget(${entry.id}, '${t.id}', 'failed', event)" class="btn-target ${t.status === 'failed' ? 'failed' : ''}">❌</button>
+                    </div>
+                </div>`;
+            });
+            targetHtml += `</div>`;
         }
         
         html += `
         <div class="entry-card" style="background: ${bg}" onclick="openDayView(${entry.id})">
             <h3>${displayDate}</h3>
-            <p><strong>Topics:</strong> ${topicsText}</p>
+            <p style="margin-bottom: 5px;"><strong>Topics:</strong> ${topicsText}</p>
             ${targetHtml}
         </div>`;
     });
@@ -242,7 +312,6 @@ async function openDayView(id) {
     const d = new Date(entry.date);
     document.getElementById('viewTitle').innerText = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
     
-    // Set immediate buttons
     document.getElementById('btnDeleteDayView').onclick = () => deleteEntry(entry.id);
     
     document.getElementById('btnEditDay').onclick = () => {
@@ -255,8 +324,6 @@ async function openDayView(id) {
     };
 
     renderDayViewHTML(entry);
-    
-    // Start Live Timer Engine
     clearInterval(currentTimerInterval);
     currentTimerInterval = setInterval(() => updateLiveTimers(entry), 1000);
 }
@@ -264,12 +331,27 @@ async function openDayView(id) {
 function renderDayViewHTML(entry) {
     let html = ``;
     
-    if(entry.target) {
-        let statusText = entry.targetStatus === 'completed' ? '<span style="color:#4CAF50;">(Completed ✅)</span>' : (entry.targetStatus === 'failed' ? '<span style="color:#F44336;">(Failed ❌)</span>' : '(Pending)');
+    let targets = entry.targets || [];
+    if(entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending' }];
+
+    if(targets.length > 0) {
         html += `<div class="section-card" style="margin-bottom: 20px; border-left: 4px solid #FF9800;">
-            <h4>🎯 Daily Target</h4>
-            <p style="font-size:16px; font-weight:bold; margin-top:5px; color:#333;">${entry.target} ${statusText}</p>
-        </div>`;
+            <h4 style="margin-bottom:10px;">🎯 Targets</h4>
+            <div class="targets-container">`;
+        
+        targets.forEach(t => {
+            let strike = t.status === 'failed' ? 'text-decoration: line-through; opacity: 0.6;' : '';
+            html += `
+            <div class="target-box view-mode">
+                <div class="target-text" style="${strike}">${t.text}</div>
+                <div class="target-actions">
+                    <button onclick="toggleTarget(${entry.id}, '${t.id}', 'completed', event)" class="btn-target ${t.status === 'completed' ? 'completed' : ''}">✅</button>
+                    <button onclick="toggleTarget(${entry.id}, '${t.id}', 'failed', event)" class="btn-target ${t.status === 'failed' ? 'failed' : ''}">❌</button>
+                    <button onclick="deleteTarget(${entry.id}, '${t.id}', event)" class="btn-target delete-tgt">🗑️</button>
+                </div>
+            </div>`;
+        });
+        html += `</div></div>`;
     }
 
     if(entry.journal) {
@@ -336,7 +418,7 @@ function renderDayViewHTML(entry) {
     updateLiveTimers(entry); 
 }
 
-// --- TIMER ENGINE & PARSER ---
+// --- TIMER ENGINE ---
 function formatTime(ms) {
     let totalSeconds = Math.floor(ms / 1000);
     let hours = Math.floor(totalSeconds / 3600);
@@ -385,5 +467,5 @@ window.handleTimer = async (slotId, action) => {
     renderDayViewHTML(entry);
 };
 
-// Start logic
+// Start
 loadEntries();

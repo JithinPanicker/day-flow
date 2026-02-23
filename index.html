@@ -21,11 +21,13 @@
 
     <div class="container">
         <div class="home-target-card">
-            <h4 style="margin: 0 0 10px 0; color: #E65100;">🎯 Today's Target</h4>
-            <div style="display: flex; gap: 8px;">
-                <input type="text" id="homeDailyTarget" placeholder="Set your main goal for today..." style="margin: 0;">
-                <button onclick="saveHomeTarget()" style="background: #FF9800; color: white; padding: 10px 20px;">Set</button>
+            <h4 style="margin: 0 0 10px 0; color: #E65100;">🎯 Today's Targets</h4>
+            <div style="display: flex; gap: 8px; margin-bottom: 15px;">
+                <input type="text" id="homeDailyTarget" placeholder="Add a new goal..." style="margin: 0;">
+                <button onclick="addHomeTarget()" style="background: #FF9800; color: white; padding: 10px 20px;">Add</button>
             </div>
+            <div id="homeTargetsList" style="display: flex; flex-direction: column; gap: 8px;">
+                </div>
         </div>
 
         <button onclick="openForm()" class="btn-new">📝 Plan & Log Today</button>
