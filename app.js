@@ -38,18 +38,17 @@ function addTimeSlot(slot = {}) {
     div.innerHTML = `
         <input type="hidden" class="ts-id" value="${slotId}">
         <input type="hidden" class="ts-status" value="${slot.status || 'pending'}">
-        <input type="hidden" class="ts-elapsed" value="${slot.elapsed || 0}">
         <input type="hidden" class="ts-logs" value='${JSON.stringify(slot.logs || [])}'>
         
         <button type="button" class="btn-remove-slot" onclick="this.parentElement.remove()">✖ Remove</button>
         <div style="display: flex; gap: 10px;">
-            <div style="flex: 0 0 100px;"><label style="font-size:12px;">Time</label><input type="time" class="ts-time" value="${slot.time || ''}" required></div>
-            <div style="flex: 1;"><label style="font-size:12px;">Heading</label><input type="text" class="ts-heading" value="${slot.heading || ''}" placeholder="Topic heading" required></div>
+            <div style="flex: 0 0 100px;"><label style="font-size:12px;">Start Time</label><input type="time" class="ts-time" value="${slot.time || ''}" required></div>
+            <div style="flex: 1;"><label style="font-size:12px;">Topic Heading</label><input type="text" class="ts-heading" value="${slot.heading || ''}" placeholder="E.g., Project Planning" required></div>
         </div>
         <label style="font-size:12px; margin-top:5px; display:block;">Description / Text</label>
-        <textarea class="ts-desc" rows="2" placeholder="What will you do?">${slot.desc || ''}</textarea>
-        <label style="font-size:12px; margin-top:5px; display:block;">Browser Link (Optional)</label>
-        <input type="url" class="ts-link" value="${slot.link || ''}" placeholder="https://...">
+        <textarea class="ts-desc" rows="2" placeholder="What exactly will you do?">${slot.desc || ''}</textarea>
+        <label style="font-size:12px; margin-top:5px; display:block;">Browser Link (Paste any link)</label>
+        <input type="text" class="ts-link" value="${slot.link || ''}" placeholder="google.com or https://...">
     `;
     container.appendChild(div);
 }
@@ -72,7 +71,6 @@ document.getElementById('entryForm').onsubmit = async (e) => {
             desc: el.querySelector('.ts-desc').value.trim(),
             link: el.querySelector('.ts-link').value.trim(),
             status: el.querySelector('.ts-status').value,
-            elapsed: parseInt(el.querySelector('.ts-elapsed').value),
             logs: JSON.parse(el.querySelector('.ts-logs').value || '[]')
         });
     });
@@ -166,25 +164,28 @@ function renderDayViewHTML(entry) {
     }
 
     entry.timetable.forEach(slot => {
-        let linkHtml = slot.link ? `<a href="${slot.link}" target="_blank" class="view-link">🔗 Open Topic Link</a>` : '';
+        // Smart Link Formatting
+        let formattedLink = slot.link;
+        if(formattedLink && !formattedLink.startsWith('http://') && !formattedLink.startsWith('https://')) {
+            formattedLink = 'https://' + formattedLink;
+        }
+        let linkHtml = formattedLink ? `<a href="${formattedLink}" target="_blank" class="view-link">🔗 Open Topic Link</a>` : '';
         
-        let timerClass = slot.status === 'active' ? 'timer-active' : (slot.status === 'finished' ? 'timer-finished' : '');
+        // Colors for status
+        let activeClass = slot.status === 'active' ? 'timer-active' : '';
+        let idleClass = slot.status === 'paused' ? 'timer-idle' : '';
         
+        // Build Logs
         let logsHtml = '';
         if(slot.logs && slot.logs.length > 0) {
-            logsHtml = `<div class="timer-logs"><strong>Activity Log:</strong><br>`;
-            slot.logs.forEach((log, i) => {
+            logsHtml = `<div class="timer-logs"><strong>History:</strong><br>`;
+            // Reverse loop to show newest events at the top
+            for(let i = slot.logs.length - 1; i >= 0; i--) {
+                let log = slot.logs[i];
                 const timeStr = new Date(log.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                let msg = `• ${log.type.charAt(0).toUpperCase() + log.type.slice(1)} at ${timeStr}`;
-                
-                // Calculate Idle Time if Started after a Pause
-                if(log.type === 'started' && i > 0 && slot.logs[i-1].type === 'paused') {
-                    const idleMs = log.time - slot.logs[i-1].time;
-                    const idleMins = Math.floor(idleMs / 60000);
-                    if(idleMins > 0) msg += ` (Idle for ${idleMins} mins)`;
-                }
-                logsHtml += `<div class="log-item">${msg}</div>`;
-            });
+                let emoji = log.type === 'started' ? '▶️' : (log.type === 'paused' ? '⏸️' : '⏹️');
+                logsHtml += `<div class="log-item">${emoji} ${log.type.toUpperCase()} at ${timeStr}</div>`;
+            }
             logsHtml += `</div>`;
         }
 
@@ -196,13 +197,24 @@ function renderDayViewHTML(entry) {
             ${linkHtml}
             
             <div style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 15px;">
-                <div id="timer_display_${slot.id}" class="timer-display ${timerClass}">00:00:00</div>
+                
+                <div class="timer-dashboard">
+                    <div class="stat-box active-box ${activeClass}">
+                        <span class="stat-label">Active Time</span>
+                        <div id="active_display_${slot.id}" class="timer-display">00:00:00</div>
+                    </div>
+                    <div class="stat-box idle-box ${idleClass}">
+                        <span class="stat-label">Idle Time</span>
+                        <div id="idle_display_${slot.id}" class="timer-display">00:00:00</div>
+                    </div>
+                </div>
+
                 <div class="timer-controls">
                     ${slot.status !== 'finished' ? 
-                        `<button style="background:#4CAF50; color:white;" onclick="handleTimer('${slot.id}', 'started')">▶️ Start</button>
+                        `<button style="background:#4CAF50; color:white;" onclick="handleTimer('${slot.id}', 'started')">▶️ Start/Resume</button>
                          <button style="background:#FFC107; color:black;" onclick="handleTimer('${slot.id}', 'paused')">⏸️ Pause</button>
                          <button style="background:#F44336; color:white;" onclick="handleTimer('${slot.id}', 'finished')">⏹️ Finish</button>`
-                    : `<span style="color:#e65100; font-weight:bold;">✅ Task Finished</span>` }
+                    : `<span style="display:inline-block; background:#e8f5e9; color:#2e7d32; padding:8px 15px; border-radius:8px; font-weight:bold;">✅ Task Finished</span>` }
                 </div>
                 ${logsHtml}
             </div>
@@ -210,10 +222,10 @@ function renderDayViewHTML(entry) {
     });
 
     document.getElementById('viewBody').innerHTML = html || "<p>No topics scheduled.</p>";
-    updateLiveTimers(entry); // Initialize first frame
+    updateLiveTimers(entry); // Initialize first frame instantly
 }
 
-// --- TIMER ENGINE ---
+// --- TIMER ENGINE & PARSER ---
 function formatTime(ms) {
     let totalSeconds = Math.floor(ms / 1000);
     let hours = Math.floor(totalSeconds / 3600);
@@ -223,18 +235,45 @@ function formatTime(ms) {
 }
 
 function updateLiveTimers(entry) {
+    const now = Date.now();
+    
     entry.timetable.forEach(slot => {
-        let displayMs = slot.elapsed || 0;
-        
-        if (slot.status === 'active' && slot.logs.length > 0) {
-            const lastLog = slot.logs[slot.logs.length - 1];
-            if (lastLog.type === 'started') {
-                displayMs += (Date.now() - lastLog.time);
+        let activeMs = 0;
+        let idleMs = 0;
+        let lastStart = null;
+        let lastPause = null;
+
+        // Parse history logs to calculate exact times
+        slot.logs.forEach(log => {
+            if (log.type === 'started') {
+                lastStart = log.time;
+                if (lastPause !== null) {
+                    idleMs += (log.time - lastPause); // Lock in idle chunk
+                    lastPause = null;
+                }
+            } else if (log.type === 'paused' || log.type === 'finished') {
+                if (lastStart !== null) {
+                    activeMs += (log.time - lastStart); // Lock in active chunk
+                    lastStart = null;
+                }
+                if (log.type === 'paused') {
+                    lastPause = log.time;
+                }
             }
+        });
+
+        // Add live accumulating time based on current status
+        if (slot.status === 'active' && lastStart !== null) {
+            activeMs += (now - lastStart);
+        } else if (slot.status === 'paused' && lastPause !== null) {
+            idleMs += (now - lastPause);
         }
+
+        const activeEl = document.getElementById(`active_display_${slot.id}`);
+        if (activeEl) activeEl.innerText = formatTime(activeMs);
         
-        const el = document.getElementById(`timer_display_${slot.id}`);
-        if(el) el.innerText = formatTime(displayMs);
+        const idleEl = document.getElementById(`idle_display_${slot.id}`);
+        if (idleEl) idleEl.innerText = formatTime(idleMs);
     });
 }
 
@@ -242,15 +281,10 @@ window.handleTimer = async (slotId, action) => {
     const entry = await db.entries.get(currentOpenedEntryId);
     const slot = entry.timetable.find(s => s.id === slotId);
     
-    // Prevent pausing if not active, etc.
+    // Prevent duplicate states
     if(action === 'started' && slot.status === 'active') return;
-    if((action === 'paused' || action === 'finished') && slot.status !== 'active' && slot.status !== 'pending') return;
-
-    // If stopping an active timer, calculate elapsed
-    if ((action === 'paused' || action === 'finished') && slot.status === 'active') {
-        const lastStart = slot.logs[slot.logs.length - 1].time;
-        slot.elapsed += (Date.now() - lastStart);
-    }
+    if(action === 'paused' && slot.status === 'paused') return;
+    if((action === 'paused' || action === 'finished') && slot.status === 'pending') return;
 
     slot.status = action === 'started' ? 'active' : action;
     if(!slot.logs) slot.logs = [];
@@ -263,7 +297,7 @@ window.handleTimer = async (slotId, action) => {
 window.deleteCurrentEntry = async () => {
     const id = document.getElementById('entryId').value;
     Swal.fire({ title: 'Delete Day?', showCancelButton: true, confirmButtonText: 'Yes, Delete', confirmButtonColor: '#d32f2f' }).then(async (res) => {
-        if(res.isConfirmed) { await db.entries.delete(parseInt(id)); closeForm(); }
+        if(res.isConfirmed) { await db.entries.delete(parseInt(id)); closeForm(); loadEntries(); }
     });
 };
 

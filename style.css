@@ -41,7 +41,7 @@ button:active { transform: scale(0.96); }
 .section-card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
 .section-card h4 { margin: 0; font-size: 15px; color: #444; }
 
-input[type="text"], input[type="date"], input[type="time"], input[type="url"], textarea { width: 100%; padding: 10px; border: 1px solid #eee; border-radius: 8px; box-sizing: border-box; font-family: inherit; font-size: 14px; background: #fdfdfd; margin-top: 5px; }
+input[type="text"], input[type="date"], input[type="time"], input[type="text"].ts-link, textarea { width: 100%; padding: 10px; border: 1px solid #eee; border-radius: 8px; box-sizing: border-box; font-family: inherit; font-size: 14px; background: #fdfdfd; margin-top: 5px; }
 textarea { resize: vertical; }
 
 .slot-builder { background: #f9f9f9; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #eee; position: relative; }
@@ -51,20 +51,25 @@ textarea { resize: vertical; }
 .form-actions button { flex: 1; padding: 14px 0; font-size: 16px; border-radius: 10px; }
 .mini-btn { cursor: pointer; background: #eee; padding: 4px 8px; border-radius: 6px; font-size: 12px; color: #555; }
 
-/* DAY VIEW SPECIFICS */
+/* DAY VIEW SPECIFICS & TIMERS */
 .view-topic { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-left: 5px solid #667eea; }
 .view-topic h4 { margin: 0 0 5px 0; font-size: 18px; color: #333; }
 .view-topic p { margin: 0 0 10px 0; font-size: 14px; color: #666; white-space: pre-wrap; }
-.view-link { display: inline-block; background: #e3f2fd; color: #1976d2; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: bold; margin-bottom: 15px; }
+.view-link { display: inline-block; background: #e3f2fd; color: #1976d2; padding: 8px 14px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: bold; margin-bottom: 15px; border: 1px solid #bbdefb; }
 
-/* TIMER UI */
-.timer-display { font-size: 24px; font-weight: bold; font-family: monospace; color: #333; background: #f0f0f0; padding: 8px 15px; border-radius: 8px; display: inline-block; margin-bottom: 10px; }
-.timer-active { background: #e8f5e9; color: #2e7d32; }
-.timer-finished { background: #fff3e0; color: #e65100; }
-.timer-controls button { padding: 8px 15px; font-size: 14px; margin-right: 5px; }
+.timer-dashboard { display: flex; gap: 10px; margin-bottom: 15px; }
+.stat-box { flex: 1; padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #eee; }
+.active-box { background: #f1f8e9; border-color: #c5e1a5; }
+.idle-box { background: #fff3e0; border-color: #ffcc80; }
+.stat-label { display: block; font-size: 12px; font-weight: bold; color: #555; margin-bottom: 4px; text-transform: uppercase; }
 
-.timer-logs { background: #fafafa; padding: 10px; border-radius: 8px; font-size: 12px; color: #555; margin-top: 10px; border: 1px dashed #ccc; }
-.log-item { margin-bottom: 4px; }
+.timer-display { font-size: 22px; font-weight: bold; font-family: monospace; color: #333; }
+.timer-active .timer-display { color: #2e7d32; }
+.timer-idle .timer-display { color: #e65100; }
+
+.timer-controls button { padding: 10px 15px; font-size: 14px; margin-right: 5px; margin-bottom: 5px; }
+.timer-logs { background: #fafafa; padding: 10px; border-radius: 8px; font-size: 12px; color: #555; margin-top: 10px; border: 1px dashed #ccc; max-height: 100px; overflow-y: auto; }
+.log-item { margin-bottom: 4px; border-bottom: 1px solid #eee; padding-bottom: 2px; }
 
 @media (min-width: 768px) {
     .modal { align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,0.6); }

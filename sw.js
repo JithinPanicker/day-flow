@@ -1,4 +1,4 @@
-const CACHE_NAME = "dayflow-pro-v4";
+const CACHE_NAME = "dayflow-pro-v5";
 const ASSETS_TO_CACHE = [
     "./",
     "./index.html",
