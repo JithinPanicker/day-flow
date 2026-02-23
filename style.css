@@ -63,15 +63,12 @@ button:active { transform: scale(0.96); }
 .entry-list { display: grid; gap: 15px; }
 
 .entry-card { 
-    padding: 20px; border-radius: 16px; color: white; cursor: pointer;
+    padding: 20px; border-radius: 16px; color: white;
     box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: transform 0.2s;
     text-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 .entry-card:hover { transform: translateY(-3px); }
-
-.entry-card h3 { margin: 0 0 5px 0; font-size: 20px; }
-.entry-card p { margin: 0; font-size: 14px; opacity: 0.9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-
+.entry-card h3 { margin: 0; font-size: 20px; }
 /* =========================================
    MODALS & FORMS
 ========================================= */

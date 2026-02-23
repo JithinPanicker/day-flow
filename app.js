@@ -115,17 +115,36 @@ async function loadEntries() {
     
     let html = "";
     entries.forEach((entry, index) => {
-        // Pick a random gradient based on index so it stays consistent per view
+        // Pick a random gradient
         const bg = gradients[index % gradients.length];
         
-        // Format Date nicely
+        // Format Date
         const dateObj = new Date(entry.date);
         const displayDate = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
+        // Build Timetable HTML for the history card
+        let timetableHtml = "";
+        if (entry.timetable && entry.timetable.length > 0) {
+            timetableHtml = `<div style="background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px; margin: 10px 0;">
+                <strong style="font-size: 14px; display: block; margin-bottom: 5px;">⏰ Timetable:</strong>`;
+            entry.timetable.forEach(t => {
+                timetableHtml += `<div style="font-size: 13px; margin-bottom: 3px; display: flex; gap: 10px;">
+                                    <span style="font-weight: bold; min-width: 60px;">${t.time}</span> 
+                                    <span>${t.task}</span>
+                                  </div>`;
+            });
+            timetableHtml += `</div>`;
+        }
+
+        // Build full HTML card (Removed the 'onclick' from the whole card, added Edit button)
         html += `
-        <div class="entry-card" style="background: ${bg}" onclick="openEntry(${entry.id})">
-            <h3>${displayDate}</h3>
-            <p>${entry.journal ? entry.journal : entry.timetable.length + ' activities logged today.'}</p>
+        <div class="entry-card" style="background: ${bg}; cursor: default;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <h3>${displayDate}</h3>
+                <button onclick="openEntry(${entry.id})" style="background: rgba(255,255,255,0.3); color: white; padding: 6px 12px; font-size: 13px; box-shadow: none;">✏️ Edit</button>
+            </div>
+            ${timetableHtml}
+            <div style="white-space: pre-wrap; font-size: 15px; margin-top: 10px; line-height: 1.5; opacity: 0.95;">${entry.journal || 'No journal notes for this day.'}</div>
         </div>`;
     });
 
