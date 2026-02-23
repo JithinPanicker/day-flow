@@ -19,7 +19,7 @@ function openForm(id = null) {
         document.getElementById('entryForm').reset();
         document.getElementById('entryId').value = "";
         document.getElementById('entryDate').valueAsDate = new Date();
-        document.getElementById('deleteBtn').style.display = 'none';
+        document.getElementById('dailyTarget').value = "";
         document.getElementById('timetableContainer').innerHTML = '';
         addTimeSlot();
     }
@@ -58,7 +58,18 @@ document.getElementById('entryForm').onsubmit = async (e) => {
     e.preventDefault();
     const id = document.getElementById('entryId').value;
     const date = document.getElementById('entryDate').value;
+    const target = document.getElementById('dailyTarget').value.trim();
     const journal = document.getElementById('journalBody').value.trim();
+    
+    // Check for existing target status to preserve it
+    let targetStatus = 'pending';
+    if(id) {
+        const existing = await db.entries.get(parseInt(id));
+        if(existing) targetStatus = existing.targetStatus || 'pending';
+    } else {
+        const existing = await db.entries.where('date').equals(date).first();
+        if(existing) targetStatus = existing.targetStatus || 'pending';
+    }
     
     const slotElements = document.querySelectorAll('.slot-builder');
     let timetable = [];
@@ -75,7 +86,7 @@ document.getElementById('entryForm').onsubmit = async (e) => {
         });
     });
 
-    const data = { date, journal, timetable };
+    const data = { date, target, targetStatus, journal, timetable };
 
     if (id) {
         await db.entries.update(parseInt(id), data);
@@ -89,6 +100,32 @@ document.getElementById('entryForm').onsubmit = async (e) => {
     topToast.fire({ text: 'Day Saved!' });
 };
 
+// --- QUICK TOGGLE TARGET STATUS ---
+window.toggleTarget = async (id, status, event) => {
+    event.stopPropagation(); // Prevents clicking the card and opening the modal
+    const entry = await db.entries.get(id);
+    if(entry.targetStatus === status) {
+        entry.targetStatus = 'pending'; // Toggle off if clicked twice
+    } else {
+        entry.targetStatus = status;
+    }
+    await db.entries.put(entry);
+    loadEntries();
+};
+
+// --- DELETE INSTANTLY ---
+window.deleteEntry = async (id) => {
+    Swal.fire({ title: 'Delete Day?', showCancelButton: true, confirmButtonText: 'Yes, Delete', confirmButtonColor: '#d32f2f' }).then(async (res) => {
+        if(res.isConfirmed) { 
+            await db.entries.delete(parseInt(id)); 
+            closeView();
+            closeForm();
+            loadEntries(); 
+            topToast.fire({ text: 'Deleted successfully!' });
+        }
+    });
+};
+
 // --- HOME SCREEN LOAD ---
 async function loadEntries() {
     const query = document.getElementById('searchInput').value.toLowerCase();
@@ -98,7 +135,7 @@ async function loadEntries() {
         entries = entries.filter(e => {
             const d = new Date(e.date);
             const dateStr = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toLowerCase();
-            const textToSearch = dateStr + " " + e.journal.toLowerCase() + " " + e.timetable.map(t => t.heading.toLowerCase() + " " + t.desc.toLowerCase()).join(" ");
+            const textToSearch = dateStr + " " + (e.target||"").toLowerCase() + " " + e.journal.toLowerCase() + " " + e.timetable.map(t => t.heading.toLowerCase() + " " + t.desc.toLowerCase()).join(" ");
             return textToSearch.includes(query);
         });
     }
@@ -111,10 +148,24 @@ async function loadEntries() {
         
         let topicsText = entry.timetable.length ? entry.timetable.map(t => t.heading).join(', ') : 'No topics planned.';
         
+        let targetHtml = '';
+        if(entry.target) {
+            let strike = entry.targetStatus === 'failed' ? 'text-decoration: line-through; opacity: 0.7;' : '';
+            targetHtml = `
+            <div class="target-box" onclick="event.stopPropagation()">
+                <div class="target-text" style="${strike}">🎯 ${entry.target}</div>
+                <div class="target-actions">
+                    <button onclick="toggleTarget(${entry.id}, 'completed', event)" class="btn-target ${entry.targetStatus === 'completed' ? 'completed' : ''}">✅</button>
+                    <button onclick="toggleTarget(${entry.id}, 'failed', event)" class="btn-target ${entry.targetStatus === 'failed' ? 'failed' : ''}">❌</button>
+                </div>
+            </div>`;
+        }
+        
         html += `
         <div class="entry-card" style="background: ${bg}" onclick="openDayView(${entry.id})">
             <h3>${displayDate}</h3>
             <p><strong>Topics:</strong> ${topicsText}</p>
+            ${targetHtml}
         </div>`;
     });
 
@@ -135,14 +186,16 @@ async function openDayView(id) {
     const d = new Date(entry.date);
     document.getElementById('viewTitle').innerText = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
     
-    // Setup Edit button
+    // Set immediate buttons
+    document.getElementById('btnDeleteDayView').onclick = () => deleteEntry(entry.id);
+    
     document.getElementById('btnEditDay').onclick = () => {
         document.getElementById('entryId').value = entry.id;
         document.getElementById('entryDate').value = entry.date;
+        document.getElementById('dailyTarget').value = entry.target || "";
         document.getElementById('journalBody').value = entry.journal || "";
         document.getElementById('timetableContainer').innerHTML = "";
         entry.timetable.forEach(t => addTimeSlot(t));
-        document.getElementById('deleteBtn').style.display = 'block';
         openForm(entry.id);
     };
 
@@ -156,6 +209,14 @@ async function openDayView(id) {
 function renderDayViewHTML(entry) {
     let html = ``;
     
+    if(entry.target) {
+        let statusText = entry.targetStatus === 'completed' ? '<span style="color:#4CAF50;">(Completed ✅)</span>' : (entry.targetStatus === 'failed' ? '<span style="color:#F44336;">(Failed ❌)</span>' : '(Pending)');
+        html += `<div class="section-card" style="margin-bottom: 20px; border-left: 4px solid #FF9800;">
+            <h4>🎯 Daily Target</h4>
+            <p style="font-size:16px; font-weight:bold; margin-top:5px; color:#333;">${entry.target} ${statusText}</p>
+        </div>`;
+    }
+
     if(entry.journal) {
         html += `<div class="section-card" style="margin-bottom: 20px;">
             <h4>📖 Notes</h4>
@@ -164,22 +225,16 @@ function renderDayViewHTML(entry) {
     }
 
     entry.timetable.forEach(slot => {
-        // Smart Link Formatting
         let formattedLink = slot.link;
-        if(formattedLink && !formattedLink.startsWith('http://') && !formattedLink.startsWith('https://')) {
-            formattedLink = 'https://' + formattedLink;
-        }
+        if(formattedLink && !formattedLink.startsWith('http://') && !formattedLink.startsWith('https://')) formattedLink = 'https://' + formattedLink;
         let linkHtml = formattedLink ? `<a href="${formattedLink}" target="_blank" class="view-link">🔗 Open Topic Link</a>` : '';
         
-        // Colors for status
         let activeClass = slot.status === 'active' ? 'timer-active' : '';
         let idleClass = slot.status === 'paused' ? 'timer-idle' : '';
         
-        // Build Logs
         let logsHtml = '';
         if(slot.logs && slot.logs.length > 0) {
             logsHtml = `<div class="timer-logs"><strong>History:</strong><br>`;
-            // Reverse loop to show newest events at the top
             for(let i = slot.logs.length - 1; i >= 0; i--) {
                 let log = slot.logs[i];
                 const timeStr = new Date(log.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -197,7 +252,6 @@ function renderDayViewHTML(entry) {
             ${linkHtml}
             
             <div style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 15px;">
-                
                 <div class="timer-dashboard">
                     <div class="stat-box active-box ${activeClass}">
                         <span class="stat-label">Active Time</span>
@@ -222,7 +276,7 @@ function renderDayViewHTML(entry) {
     });
 
     document.getElementById('viewBody').innerHTML = html || "<p>No topics scheduled.</p>";
-    updateLiveTimers(entry); // Initialize first frame instantly
+    updateLiveTimers(entry); 
 }
 
 // --- TIMER ENGINE & PARSER ---
@@ -236,42 +290,22 @@ function formatTime(ms) {
 
 function updateLiveTimers(entry) {
     const now = Date.now();
-    
     entry.timetable.forEach(slot => {
-        let activeMs = 0;
-        let idleMs = 0;
-        let lastStart = null;
-        let lastPause = null;
-
-        // Parse history logs to calculate exact times
+        let activeMs = 0; let idleMs = 0; let lastStart = null; let lastPause = null;
         slot.logs.forEach(log => {
             if (log.type === 'started') {
                 lastStart = log.time;
-                if (lastPause !== null) {
-                    idleMs += (log.time - lastPause); // Lock in idle chunk
-                    lastPause = null;
-                }
+                if (lastPause !== null) { idleMs += (log.time - lastPause); lastPause = null; }
             } else if (log.type === 'paused' || log.type === 'finished') {
-                if (lastStart !== null) {
-                    activeMs += (log.time - lastStart); // Lock in active chunk
-                    lastStart = null;
-                }
-                if (log.type === 'paused') {
-                    lastPause = log.time;
-                }
+                if (lastStart !== null) { activeMs += (log.time - lastStart); lastStart = null; }
+                if (log.type === 'paused') lastPause = log.time;
             }
         });
-
-        // Add live accumulating time based on current status
-        if (slot.status === 'active' && lastStart !== null) {
-            activeMs += (now - lastStart);
-        } else if (slot.status === 'paused' && lastPause !== null) {
-            idleMs += (now - lastPause);
-        }
+        if (slot.status === 'active' && lastStart !== null) activeMs += (now - lastStart);
+        else if (slot.status === 'paused' && lastPause !== null) idleMs += (now - lastPause);
 
         const activeEl = document.getElementById(`active_display_${slot.id}`);
         if (activeEl) activeEl.innerText = formatTime(activeMs);
-        
         const idleEl = document.getElementById(`idle_display_${slot.id}`);
         if (idleEl) idleEl.innerText = formatTime(idleMs);
     });
@@ -280,8 +314,6 @@ function updateLiveTimers(entry) {
 window.handleTimer = async (slotId, action) => {
     const entry = await db.entries.get(currentOpenedEntryId);
     const slot = entry.timetable.find(s => s.id === slotId);
-    
-    // Prevent duplicate states
     if(action === 'started' && slot.status === 'active') return;
     if(action === 'paused' && slot.status === 'paused') return;
     if((action === 'paused' || action === 'finished') && slot.status === 'pending') return;
@@ -291,14 +323,7 @@ window.handleTimer = async (slotId, action) => {
     slot.logs.push({ type: action, time: Date.now() });
 
     await db.entries.put(entry);
-    renderDayViewHTML(entry); // Re-render to show updated logs and colors
-};
-
-window.deleteCurrentEntry = async () => {
-    const id = document.getElementById('entryId').value;
-    Swal.fire({ title: 'Delete Day?', showCancelButton: true, confirmButtonText: 'Yes, Delete', confirmButtonColor: '#d32f2f' }).then(async (res) => {
-        if(res.isConfirmed) { await db.entries.delete(parseInt(id)); closeForm(); loadEntries(); }
-    });
+    renderDayViewHTML(entry);
 };
 
 loadEntries();

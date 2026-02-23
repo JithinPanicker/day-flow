@@ -23,7 +23,7 @@
         <button onclick="openForm()" class="btn-new">📝 Plan & Log Today</button>
 
         <div class="search-box">
-            <input type="text" id="searchInput" placeholder="🔍 Search by day, month, date, or keywords..." autocomplete="off">
+            <input type="text" id="searchInput" placeholder="🔍 Search by day, target, or keywords..." autocomplete="off">
         </div>
 
         <div id="entryList" class="entry-list"></div>
@@ -33,8 +33,9 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3 id="viewTitle">Day Details</h3>
-                <div style="display: flex; gap: 10px;">
+                <div style="display: flex; gap: 8px;">
                     <button id="btnEditDay" class="btn-ghost" style="background: #e3f2fd; color: #1976D2;">✏️ Edit</button>
+                    <button id="btnDeleteDayView" class="btn-ghost" style="background: #ffebee; color: #d32f2f;">🗑️ Delete</button>
                     <button onclick="closeView()" class="btn-close">✖</button>
                 </div>
             </div>
@@ -55,7 +56,10 @@
                 
                 <div class="section-card" style="margin-bottom: 15px;">
                     <label style="font-weight: bold; color: #555;">Date:</label>
-                    <input type="date" id="entryDate" required style="margin-top: 5px;">
+                    <input type="date" id="entryDate" required style="margin-top: 5px; margin-bottom: 15px;">
+
+                    <label style="font-weight: bold; color: #555;">🎯 Daily Target:</label>
+                    <input type="text" id="dailyTarget" placeholder="What is your main goal for today?" style="margin-top: 5px;">
                 </div>
 
                 <div class="section-card timetable-card">
@@ -76,7 +80,6 @@
 
                 <div class="form-actions">
                     <button type="submit" style="background-color: #4CAF50; color: white;">Save Day</button>
-                    <button type="button" id="deleteBtn" onclick="deleteCurrentEntry()" style="background-color: #D32F2F; color: white; display: none;">Delete</button>
                 </div>
             </form>
         </div>
