@@ -16,6 +16,81 @@ function getLocalISODate() {
     return (new Date(today - offset)).toISOString().split('T')[0];
 }
 
+// ==========================================
+// BACKGROUND AUTO-SAVE DRAFT SYSTEM
+// ==========================================
+function saveDraft() {
+    // 1. Save Home Screen Target Typing
+    const homeTarget = document.getElementById('homeDailyTarget');
+    if(homeTarget) localStorage.setItem('dayflow_home_target', homeTarget.value);
+
+    // 2. Save Form if it is open
+    const isFormOpen = !document.getElementById('formModal').classList.contains('hidden');
+    if (isFormOpen) {
+        const slotElements = document.querySelectorAll('.slot-builder');
+        let timetable = [];
+        slotElements.forEach(el => {
+            timetable.push({
+                id: el.querySelector('.ts-id').value,
+                time: el.querySelector('.ts-time').value,
+                heading: el.querySelector('.ts-heading').value,
+                desc: el.querySelector('.ts-desc').value,
+                link: el.querySelector('.ts-link').value,
+                status: el.querySelector('.ts-status').value,
+                logs: JSON.parse(el.querySelector('.ts-logs').value || '[]')
+            });
+        });
+
+        const draftData = {
+            isFormOpen: true,
+            id: document.getElementById('entryId').value,
+            date: document.getElementById('entryDate').value,
+            journal: document.getElementById('journalBody').value,
+            timetable: timetable
+        };
+        localStorage.setItem('dayflow_draft', JSON.stringify(draftData));
+    } else {
+        localStorage.removeItem('dayflow_draft');
+    }
+}
+
+function restoreDraft() {
+    // 1. Restore Home Screen Target Typing
+    const savedHomeTarget = localStorage.getItem('dayflow_home_target');
+    if (savedHomeTarget) document.getElementById('homeDailyTarget').value = savedHomeTarget;
+
+    // 2. Restore Form if it was open
+    const draftJson = localStorage.getItem('dayflow_draft');
+    if (draftJson) {
+        try {
+            const draft = JSON.parse(draftJson);
+            if (draft.isFormOpen) {
+                document.getElementById('entryId').value = draft.id || "";
+                document.getElementById('entryDate').value = draft.date || getLocalISODate();
+                document.getElementById('journalBody').value = draft.journal || "";
+                
+                document.getElementById('timetableContainer').innerHTML = "";
+                if (draft.timetable && draft.timetable.length > 0) {
+                    draft.timetable.forEach(t => addTimeSlot(t));
+                } else {
+                    addTimeSlot();
+                }
+
+                document.getElementById('formModal').classList.remove('hidden');
+                document.getElementById('viewModal').classList.add('hidden');
+                document.body.style.overflow = 'hidden';
+            }
+        } catch(e) { console.error("Could not restore draft", e); }
+    }
+}
+
+// Listen for the app being minimized or tab changed
+window.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveDraft(); });
+window.addEventListener('pagehide', saveDraft); // For iOS Safari backup
+
+// ==========================================
+
+
 // --- TARGET LOGIC (Row by Row) ---
 async function loadHomeTarget() {
     const todayStr = getLocalISODate();
@@ -67,6 +142,7 @@ window.addHomeTarget = async () => {
     }
     
     document.getElementById('homeDailyTarget').value = '';
+    localStorage.removeItem('dayflow_home_target'); // Clear saved typing
     loadHomeTarget();
     loadEntries();
 };
@@ -75,7 +151,6 @@ window.toggleTarget = async (entryId, targetId, status, event) => {
     if(event) event.stopPropagation();
     const entry = await db.entries.get(entryId);
     
-    // Migration check
     let targets = entry.targets || [];
     if(entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending' }];
     
@@ -122,8 +197,18 @@ function openForm(id = null) {
     }
 }
 
-function closeForm() { document.getElementById('formModal').classList.add('hidden'); document.body.style.overflow = 'auto'; loadEntries(); }
-function closeView() { document.getElementById('viewModal').classList.add('hidden'); document.body.style.overflow = 'auto'; clearInterval(currentTimerInterval); }
+function closeForm() { 
+    document.getElementById('formModal').classList.add('hidden'); 
+    document.body.style.overflow = 'auto'; 
+    localStorage.removeItem('dayflow_draft'); // Erase draft when manually closed
+    loadEntries(); 
+}
+
+function closeView() { 
+    document.getElementById('viewModal').classList.add('hidden'); 
+    document.body.style.overflow = 'auto'; 
+    clearInterval(currentTimerInterval); 
+}
 
 // --- SMART AUTOFILL (Dropdown) ---
 window.autofillHeading = async (btnElement) => {
@@ -136,7 +221,6 @@ window.autofillHeading = async (btnElement) => {
         const headingInput = btnElement.closest('.slot-builder').querySelector('.ts-heading');
         headingInput.value = targets[0].text;
     } else if (targets.length > 1) {
-        // Multi-select using SweetAlert
         let options = {};
         targets.forEach(t => options[t.id] = t.text);
         
@@ -195,7 +279,6 @@ document.getElementById('entryForm').onsubmit = async (e) => {
     const date = document.getElementById('entryDate').value;
     const journal = document.getElementById('journalBody').value.trim();
     
-    // Preserve targets list
     let existing = await db.entries.where('date').equals(date).first();
     let targets = existing ? (existing.targets || []) : [];
     if(existing && existing.target && targets.length === 0) targets = [{ id: 'legacy', text: existing.target, status: existing.targetStatus || 'pending' }];
@@ -224,6 +307,7 @@ document.getElementById('entryForm').onsubmit = async (e) => {
         else await db.entries.add(data);
     }
     
+    localStorage.removeItem('dayflow_draft'); // Clean draft upon successful save
     closeForm();
     topToast.fire({ text: 'Day Saved!' });
 };
@@ -261,7 +345,6 @@ async function loadEntries() {
         let targets = entry.targets || [];
         if(entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending' }];
 
-        // Hide completely empty logs
         if(targets.length === 0 && (!entry.timetable || entry.timetable.length === 0) && !entry.journal) return;
 
         const bg = gradients[idx % gradients.length];
@@ -467,5 +550,7 @@ window.handleTimer = async (slotId, action) => {
     renderDayViewHTML(entry);
 };
 
-// Start
-loadEntries();
+// Start App sequence
+loadEntries().then(() => {
+    restoreDraft(); // Check if a form was left open!
+});
