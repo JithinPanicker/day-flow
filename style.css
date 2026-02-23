@@ -1,112 +1,70 @@
-/* =========================================
-   GENERAL STYLES & COLOR VARIABLES
-========================================= */
 :root {
     --bg-main: #f4f7fb;
-    --grad-header: linear-gradient(135deg, #FF9A9E 0%, #FECFEF 99%, #FECFEF 100%);
+    --grad-header: linear-gradient(135deg, #FF9A9E 0%, #FECFEF 100%);
     --grad-card-1: linear-gradient(120deg, #e0c3fc 0%, #8ec5fc 100%);
     --grad-card-2: linear-gradient(120deg, #f093fb 0%, #f5576c 100%);
     --grad-card-3: linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%);
     --grad-card-4: linear-gradient(120deg, #ffecd2 0%, #fcb69f 100%);
 }
 
-body { 
-    font-family: 'Nunito', 'Segoe UI', sans-serif; 
-    background-color: var(--bg-main); 
-    margin: 0; 
-    padding-bottom: 80px; 
-}
+body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg-main); margin: 0; padding-bottom: 80px; }
 
-.colorful-header {
-    background: var(--grad-header);
-    padding: 15px;
-    text-align: center;
-    box-shadow: 0 4px 15px rgba(255, 154, 158, 0.4);
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    border-bottom-left-radius: 20px;
-    border-bottom-right-radius: 20px;
-    color: #fff;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
-}
-
+.colorful-header { background: var(--grad-header); padding: 15px; text-align: center; box-shadow: 0 4px 15px rgba(255, 154, 158, 0.4); position: sticky; top: 0; z-index: 100; border-radius: 0 0 20px 20px; color: #fff; }
 .colorful-header h1 { margin: 0; font-size: 24px; }
-
 .container { padding: 20px; max-width: 600px; margin: auto; }
 
-/* =========================================
-   BUTTONS
-========================================= */
-button { border: none; border-radius: 12px; cursor: pointer; font-weight: bold; transition: transform 0.2s; }
+button { border: none; border-radius: 10px; cursor: pointer; font-weight: bold; transition: 0.2s; }
 button:active { transform: scale(0.96); }
 
-.btn-new { 
-    width: 100%; padding: 16px; 
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white; font-size: 18px; margin-bottom: 20px;
-    box-shadow: 0 4px 15px rgba(118, 75, 162, 0.3);
-}
-
-.btn-close { background: transparent; font-size: 24px; color: #555; }
+.btn-new { width: 100%; padding: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-size: 16px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(118, 75, 162, 0.3); }
+.btn-close { background: transparent; font-size: 20px; color: #555; padding: 0 5px; }
 .btn-ghost { background: rgba(0,0,0,0.05); color: #333; padding: 6px 12px; font-size: 13px; border-radius: 8px; }
 
-/* =========================================
-   LIST ITEMS (Colorful Cards)
-========================================= */
-.search-box input { 
-    width: 100%; padding: 14px; border: none; border-radius: 12px; 
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05); outline: none; box-sizing: border-box; 
-    margin-bottom: 15px; font-size: 16px;
-}
+.search-box input { width: 100%; padding: 14px; border: none; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); outline: none; box-sizing: border-box; margin-bottom: 15px; font-size: 15px; }
 
 .entry-list { display: grid; gap: 15px; }
-
-.entry-card { 
-    padding: 20px; border-radius: 16px; color: white;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: transform 0.2s;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.1);
-}
+.entry-card { padding: 20px; border-radius: 16px; color: white; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: transform 0.2s; text-shadow: 0 1px 2px rgba(0,0,0,0.1); }
 .entry-card:hover { transform: translateY(-3px); }
-.entry-card h3 { margin: 0; font-size: 20px; }
-/* =========================================
-   MODALS & FORMS
-========================================= */
-.modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 2000; display: flex; flex-direction: column; }
-.hidden { display: none !important; }
+.entry-card h3 { margin: 0 0 5px 0; font-size: 20px; }
+.entry-card p { margin: 0; font-size: 14px; opacity: 0.9; }
 
-.modal-content { 
-    background: var(--bg-main); width: 100%; height: 100%; max-height: 100vh;
-    display: flex; flex-direction: column; animation: slideUp 0.3s ease-out;
-}
+/* MODALS */
+.modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; display: flex; flex-direction: column; }
+.hidden { display: none !important; }
+.modal-content { background: var(--bg-main); width: 100%; height: 100%; max-height: 100vh; display: flex; flex-direction: column; animation: slideUp 0.3s ease-out; }
 @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-.modal-header { background: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05); z-index: 10; border-bottom-left-radius: 15px; border-bottom-right-radius: 15px; }
-.modal-header h3 { margin: 0; font-size: 20px; color: #333; }
-
-#entryForm { padding: 15px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; padding-bottom: 90px; }
+.modal-header { background: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05); z-index: 10; border-radius: 0 0 15px 15px; }
+.modal-header h3 { margin: 0; font-size: 18px; color: #333; }
+.modal-body, #entryForm { padding: 15px; overflow-y: auto; flex: 1; padding-bottom: 90px; }
 
 .section-card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
-.section-card h4 { margin: 0; font-size: 16px; color: #444; }
+.section-card h4 { margin: 0; font-size: 15px; color: #444; }
 
-input[type="text"], input[type="date"], input[type="time"], textarea { 
-    width: 100%; padding: 12px; border: 1px solid #eee; border-radius: 8px; 
-    box-sizing: border-box; font-family: inherit; font-size: 15px; background: #fdfdfd; 
-}
-textarea { resize: vertical; margin-top: 10px; }
+input[type="text"], input[type="date"], input[type="time"], input[type="url"], textarea { width: 100%; padding: 10px; border: 1px solid #eee; border-radius: 8px; box-sizing: border-box; font-family: inherit; font-size: 14px; background: #fdfdfd; margin-top: 5px; }
+textarea { resize: vertical; }
 
-/* Timetable Slot Rows */
-.time-slot { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
-.time-slot input[type="time"] { flex: 0 0 110px; }
-.time-slot input[type="text"] { flex: 1; }
-.btn-remove-slot { background: #ffebee; color: #d32f2f; width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; padding: 0; }
+.slot-builder { background: #f9f9f9; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #eee; position: relative; }
+.btn-remove-slot { position: absolute; top: 10px; right: 10px; background: #ffebee; color: #d32f2f; padding: 4px 8px; font-size: 12px; }
 
 .form-actions { position: fixed; bottom: 0; left: 0; width: 100%; background: white; padding: 15px; box-sizing: border-box; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); display: flex; gap: 10px; z-index: 20; }
 .form-actions button { flex: 1; padding: 14px 0; font-size: 16px; border-radius: 10px; }
+.mini-btn { cursor: pointer; background: #eee; padding: 4px 8px; border-radius: 6px; font-size: 12px; color: #555; }
 
-.mini-toolbar span { cursor: pointer; background: #eee; padding: 4px 8px; border-radius: 6px; font-size: 12px; color: #555; }
+/* DAY VIEW SPECIFICS */
+.view-topic { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-left: 5px solid #667eea; }
+.view-topic h4 { margin: 0 0 5px 0; font-size: 18px; color: #333; }
+.view-topic p { margin: 0 0 10px 0; font-size: 14px; color: #666; white-space: pre-wrap; }
+.view-link { display: inline-block; background: #e3f2fd; color: #1976d2; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: bold; margin-bottom: 15px; }
 
-.hidden-print { position: fixed; top: -9999px; left: -9999px; width: 595px; background: white; padding: 40px; }
+/* TIMER UI */
+.timer-display { font-size: 24px; font-weight: bold; font-family: monospace; color: #333; background: #f0f0f0; padding: 8px 15px; border-radius: 8px; display: inline-block; margin-bottom: 10px; }
+.timer-active { background: #e8f5e9; color: #2e7d32; }
+.timer-finished { background: #fff3e0; color: #e65100; }
+.timer-controls button { padding: 8px 15px; font-size: 14px; margin-right: 5px; }
+
+.timer-logs { background: #fafafa; padding: 10px; border-radius: 8px; font-size: 12px; color: #555; margin-top: 10px; border: 1px dashed #ccc; }
+.log-item { margin-bottom: 4px; }
 
 @media (min-width: 768px) {
     .modal { align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,0.6); }
