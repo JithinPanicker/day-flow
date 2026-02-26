@@ -20,11 +20,9 @@ function getLocalISODate() {
 // BACKGROUND AUTO-SAVE DRAFT SYSTEM
 // ==========================================
 function saveDraft() {
-    // 1. Save Home Screen Target Typing
     const homeTarget = document.getElementById('homeDailyTarget');
     if(homeTarget) localStorage.setItem('dayflow_home_target', homeTarget.value);
 
-    // 2. Save Form if it is open
     const isFormOpen = !document.getElementById('formModal').classList.contains('hidden');
     if (isFormOpen) {
         const slotElements = document.querySelectorAll('.slot-builder');
@@ -55,11 +53,9 @@ function saveDraft() {
 }
 
 function restoreDraft() {
-    // 1. Restore Home Screen Target Typing
     const savedHomeTarget = localStorage.getItem('dayflow_home_target');
     if (savedHomeTarget) document.getElementById('homeDailyTarget').value = savedHomeTarget;
 
-    // 2. Restore Form if it was open
     const draftJson = localStorage.getItem('dayflow_draft');
     if (draftJson) {
         try {
@@ -84,9 +80,8 @@ function restoreDraft() {
     }
 }
 
-// Listen for the app being minimized or tab changed
 window.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveDraft(); });
-window.addEventListener('pagehide', saveDraft); // For iOS Safari backup
+window.addEventListener('pagehide', saveDraft); 
 
 // ==========================================
 
@@ -99,7 +94,6 @@ async function loadHomeTarget() {
     
     let targets = entry ? (entry.targets || []) : [];
     
-    // Fallback migration for old single targets
     if (entry && entry.target && targets.length === 0) {
         targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending' }];
     }
@@ -142,7 +136,7 @@ window.addHomeTarget = async () => {
     }
     
     document.getElementById('homeDailyTarget').value = '';
-    localStorage.removeItem('dayflow_home_target'); // Clear saved typing
+    localStorage.removeItem('dayflow_home_target'); 
     loadHomeTarget();
     loadEntries();
 };
@@ -182,7 +176,32 @@ window.deleteTarget = async (entryId, targetId, event) => {
     }
 };
 
-// --- FORM UI HELPERS ---
+// --- FORM UI HELPERS & DYNAMIC BUTTON ---
+window.openTodayForm = async () => {
+    const todayStr = getLocalISODate();
+    const existing = await db.entries.where('date').equals(todayStr).first();
+    if (existing) {
+        editEntry(existing);
+    } else {
+        openForm(null);
+    }
+};
+
+window.editEntry = (entry) => {
+    document.getElementById('entryId').value = entry.id;
+    document.getElementById('entryDate').value = entry.date;
+    document.getElementById('journalBody').value = entry.journal || "";
+    document.getElementById('timetableContainer').innerHTML = "";
+    if(entry.timetable && entry.timetable.length > 0) {
+        entry.timetable.forEach(t => addTimeSlot(t));
+    } else {
+        addTimeSlot();
+    }
+    document.getElementById('formModal').classList.remove('hidden');
+    document.getElementById('viewModal').classList.add('hidden');
+    document.body.style.overflow = 'hidden';
+};
+
 function openForm(id = null) {
     document.getElementById('formModal').classList.remove('hidden');
     document.getElementById('viewModal').classList.add('hidden');
@@ -200,7 +219,7 @@ function openForm(id = null) {
 function closeForm() { 
     document.getElementById('formModal').classList.add('hidden'); 
     document.body.style.overflow = 'auto'; 
-    localStorage.removeItem('dayflow_draft'); // Erase draft when manually closed
+    localStorage.removeItem('dayflow_draft'); 
     loadEntries(); 
 }
 
@@ -329,6 +348,22 @@ async function loadEntries() {
     
     const query = document.getElementById('searchInput').value.toLowerCase();
     let entries = await db.entries.orderBy('date').reverse().toArray();
+
+    // DYNAMIC BUTTON TEXT UPDATE
+    const todayStr = getLocalISODate();
+    const todayEntry = entries.find(e => e.date === todayStr);
+    const btnPlan = document.getElementById('btnPlanToday');
+    if (btnPlan) {
+        if (todayEntry && ((todayEntry.timetable && todayEntry.timetable.length > 0) || todayEntry.journal)) {
+            btnPlan.innerHTML = "📝 Edit Plan & Log Today";
+            btnPlan.style.background = "linear-gradient(135deg, #FF9800 0%, #F44336 100%)";
+            btnPlan.style.boxShadow = "0 4px 15px rgba(244, 67, 54, 0.3)";
+        } else {
+            btnPlan.innerHTML = "📝 Plan & Log Today";
+            btnPlan.style.background = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)";
+            btnPlan.style.boxShadow = "0 4px 15px rgba(118, 75, 162, 0.3)";
+        }
+    }
     
     if (query) {
         entries = entries.filter(e => {
@@ -345,6 +380,7 @@ async function loadEntries() {
         let targets = entry.targets || [];
         if(entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending' }];
 
+        // Hide completely empty logs
         if(targets.length === 0 && (!entry.timetable || entry.timetable.length === 0) && !entry.journal) return;
 
         const bg = gradients[idx % gradients.length];
@@ -397,14 +433,7 @@ async function openDayView(id) {
     
     document.getElementById('btnDeleteDayView').onclick = () => deleteEntry(entry.id);
     
-    document.getElementById('btnEditDay').onclick = () => {
-        document.getElementById('entryId').value = entry.id;
-        document.getElementById('entryDate').value = entry.date;
-        document.getElementById('journalBody').value = entry.journal || "";
-        document.getElementById('timetableContainer').innerHTML = "";
-        if(entry.timetable) entry.timetable.forEach(t => addTimeSlot(t));
-        openForm(entry.id);
-    };
+    document.getElementById('btnEditDay').onclick = () => { editEntry(entry); };
 
     renderDayViewHTML(entry);
     clearInterval(currentTimerInterval);
@@ -514,7 +543,11 @@ function updateLiveTimers(entry) {
     const now = Date.now();
     if(entry.timetable) {
         entry.timetable.forEach(slot => {
-            let activeMs = 0; let idleMs = 0; let lastStart = null; let lastPause = null;
+            let activeMs = 0; 
+            let idleMs = 0; 
+            let lastStart = null; 
+            let lastPause = null;
+            
             slot.logs.forEach(log => {
                 if (log.type === 'started') {
                     lastStart = log.time;
@@ -524,6 +557,7 @@ function updateLiveTimers(entry) {
                     if (log.type === 'paused') lastPause = log.time;
                 }
             });
+            
             if (slot.status === 'active' && lastStart !== null) activeMs += (now - lastStart);
             else if (slot.status === 'paused' && lastPause !== null) idleMs += (now - lastPause);
 

@@ -17,7 +17,7 @@ button { border: none; border-radius: 10px; cursor: pointer; font-weight: bold; 
 button:active { transform: scale(0.96); }
 
 .home-target-card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(255,152,0,0.15); border-left: 5px solid #FF9800; }
-.btn-new { width: 100%; padding: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-size: 16px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(118, 75, 162, 0.3); }
+.btn-new { width: 100%; padding: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-size: 16px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(118, 75, 162, 0.3); transition: all 0.3s ease; }
 .btn-close { background: transparent; font-size: 20px; color: #555; padding: 0 5px; }
 .btn-ghost { background: rgba(0,0,0,0.05); color: #333; padding: 6px 10px; font-size: 13px; border-radius: 8px; }
 
@@ -55,7 +55,7 @@ button:active { transform: scale(0.96); }
 .section-card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
 .section-card h4 { margin: 0; font-size: 15px; color: #444; }
 
-input[type="text"], input[type="date"], input[type="time"], input[type="text"].ts-link, textarea { width: 100%; padding: 10px; border: 1px solid #eee; border-radius: 8px; box-sizing: border-box; font-family: inherit; font-size: 14px; background: #fdfdfd; margin-top: 5px; }
+input[type="text"], input[type="date"], input[type="time"], input[type="url"], textarea { width: 100%; padding: 10px; border: 1px solid #eee; border-radius: 8px; box-sizing: border-box; font-family: inherit; font-size: 14px; background: #fdfdfd; margin-top: 5px; }
 textarea { resize: vertical; }
 
 .slot-builder { background: #f9f9f9; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #eee; position: relative; }
