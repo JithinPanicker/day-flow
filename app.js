@@ -35,6 +35,8 @@ function saveDraft() {
                 desc: el.querySelector('.ts-desc').value,
                 link: el.querySelector('.ts-link').value,
                 status: el.querySelector('.ts-status').value,
+                isPinned: el.querySelector('.ts-pin').checked, // NEW
+                unclearNotes: el.querySelector('.ts-unclear').value, // NEW
                 logs: JSON.parse(el.querySelector('.ts-logs').value || '[]')
             });
         });
@@ -86,17 +88,14 @@ window.addEventListener('pagehide', saveDraft);
 // ==========================================
 
 
-// --- TARGET LOGIC (Row by Row) ---
+// --- TARGET LOGIC & REVISIONS ---
 async function loadHomeTarget() {
     const todayStr = getLocalISODate();
     const entry = await db.entries.where('date').equals(todayStr).first();
     const listDiv = document.getElementById('homeTargetsList');
     
     let targets = entry ? (entry.targets || []) : [];
-    
-    if (entry && entry.target && targets.length === 0) {
-        targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending' }];
-    }
+    if (entry && entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending', revisionCount: 0 }];
 
     if(targets.length === 0) {
         listDiv.innerHTML = "<p style='color:#888; font-size:13px; margin:0;'>No targets set yet.</p>";
@@ -106,9 +105,19 @@ async function loadHomeTarget() {
     let html = '';
     targets.forEach(t => {
         let strike = t.status === 'failed' ? 'text-decoration: line-through; opacity: 0.7;' : '';
+        let revCount = t.revisionCount || 0;
+        
         html += `
         <div class="target-box view-mode">
-            <div class="target-text" style="${strike}">${t.text}</div>
+            <div style="display:flex; flex-direction:column; flex:1;">
+                <div class="target-text" style="${strike}">${t.text}</div>
+                <div class="revision-counter">
+                    Rev: 
+                    <button onclick="updateRevision(${entry.id}, '${t.id}', -1, event)" class="btn-rev">-</button>
+                    <span style="font-weight:bold; width:12px; text-align:center;">${revCount}</span>
+                    <button onclick="updateRevision(${entry.id}, '${t.id}', 1, event)" class="btn-rev">+</button>
+                </div>
+            </div>
             <div class="target-actions">
                 <button onclick="toggleTarget(${entry.id}, '${t.id}', 'completed', event)" class="btn-target ${t.status === 'completed' ? 'completed' : ''}">✅</button>
                 <button onclick="toggleTarget(${entry.id}, '${t.id}', 'failed', event)" class="btn-target ${t.status === 'failed' ? 'failed' : ''}">❌</button>
@@ -125,7 +134,8 @@ window.addHomeTarget = async () => {
     
     const todayStr = getLocalISODate();
     let entry = await db.entries.where('date').equals(todayStr).first();
-    const newTarget = { id: Date.now().toString(), text: text, status: 'pending' };
+    // NEW: Initialize Revision Count to 0
+    const newTarget = { id: Date.now().toString(), text: text, status: 'pending', revisionCount: 0 };
     
     if(entry) {
         if(!entry.targets) entry.targets = [];
@@ -141,16 +151,14 @@ window.addHomeTarget = async () => {
     loadEntries();
 };
 
-window.toggleTarget = async (entryId, targetId, status, event) => {
+window.updateRevision = async (entryId, targetId, delta, event) => {
     if(event) event.stopPropagation();
     const entry = await db.entries.get(entryId);
-    
     let targets = entry.targets || [];
-    if(entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending' }];
-    
     const target = targets.find(t => t.id === targetId);
+    
     if(target) {
-        target.status = target.status === status ? 'pending' : status;
+        target.revisionCount = Math.max(0, (target.revisionCount || 0) + delta); // Prevents negative numbers
         entry.targets = targets;
         await db.entries.put(entry);
         loadHomeTarget();
@@ -161,30 +169,38 @@ window.toggleTarget = async (entryId, targetId, status, event) => {
     }
 };
 
+window.toggleTarget = async (entryId, targetId, status, event) => {
+    if(event) event.stopPropagation();
+    const entry = await db.entries.get(entryId);
+    let targets = entry.targets || [];
+    const target = targets.find(t => t.id === targetId);
+    if(target) {
+        target.status = target.status === status ? 'pending' : status;
+        entry.targets = targets;
+        await db.entries.put(entry);
+        loadHomeTarget();
+        loadEntries();
+        if(!document.getElementById('viewModal').classList.contains('hidden') && currentOpenedEntryId === entryId) renderDayViewHTML(entry);
+    }
+};
+
 window.deleteTarget = async (entryId, targetId, event) => {
     if(event) event.stopPropagation();
     const entry = await db.entries.get(entryId);
     let targets = entry.targets || [];
-    if(entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending' }];
-    
     entry.targets = targets.filter(t => t.id !== targetId);
     await db.entries.put(entry);
     loadHomeTarget();
     loadEntries();
-    if(!document.getElementById('viewModal').classList.contains('hidden') && currentOpenedEntryId === entryId) {
-        renderDayViewHTML(entry);
-    }
+    if(!document.getElementById('viewModal').classList.contains('hidden') && currentOpenedEntryId === entryId) renderDayViewHTML(entry);
 };
 
 // --- FORM UI HELPERS & DYNAMIC BUTTON ---
 window.openTodayForm = async () => {
     const todayStr = getLocalISODate();
     const existing = await db.entries.where('date').equals(todayStr).first();
-    if (existing) {
-        editEntry(existing);
-    } else {
-        openForm(null);
-    }
+    if (existing) editEntry(existing);
+    else openForm(null);
 };
 
 window.editEntry = (entry) => {
@@ -192,11 +208,9 @@ window.editEntry = (entry) => {
     document.getElementById('entryDate').value = entry.date;
     document.getElementById('journalBody').value = entry.journal || "";
     document.getElementById('timetableContainer').innerHTML = "";
-    if(entry.timetable && entry.timetable.length > 0) {
-        entry.timetable.forEach(t => addTimeSlot(t));
-    } else {
-        addTimeSlot();
-    }
+    if(entry.timetable && entry.timetable.length > 0) entry.timetable.forEach(t => addTimeSlot(t));
+    else addTimeSlot();
+    
     document.getElementById('formModal').classList.remove('hidden');
     document.getElementById('viewModal').classList.add('hidden');
     document.body.style.overflow = 'hidden';
@@ -206,7 +220,6 @@ function openForm(id = null) {
     document.getElementById('formModal').classList.remove('hidden');
     document.getElementById('viewModal').classList.add('hidden');
     document.body.style.overflow = 'hidden';
-    
     if(!id) {
         document.getElementById('entryForm').reset();
         document.getElementById('entryId').value = "";
@@ -229,41 +242,25 @@ function closeView() {
     clearInterval(currentTimerInterval); 
 }
 
-// --- SMART AUTOFILL (Dropdown) ---
 window.autofillHeading = async (btnElement) => {
     const selectedDate = document.getElementById('entryDate').value;
     const entry = await db.entries.where('date').equals(selectedDate).first();
     let targets = entry ? (entry.targets || []) : [];
-    if(entry && entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: 'pending' }];
-    
     if (targets.length === 1) {
-        const headingInput = btnElement.closest('.slot-builder').querySelector('.ts-heading');
-        headingInput.value = targets[0].text;
+        btnElement.closest('.slot-builder').querySelector('.ts-heading').value = targets[0].text;
     } else if (targets.length > 1) {
         let options = {};
         targets.forEach(t => options[t.id] = t.text);
-        
-        const { value: targetId } = await Swal.fire({
-            title: 'Select a Target',
-            input: 'select',
-            inputOptions: options,
-            inputPlaceholder: 'Choose goal...',
-            showCancelButton: true,
-            confirmButtonColor: '#4CAF50'
-        });
-        
-        if (targetId) {
-            const headingInput = btnElement.closest('.slot-builder').querySelector('.ts-heading');
-            headingInput.value = targets.find(t => t.id === targetId).text;
-        }
-    } else {
-        topToast.fire({ text: 'No targets set for this date!', background: '#FF9800' });
-    }
+        const { value: targetId } = await Swal.fire({ title: 'Select a Target', input: 'select', inputOptions: options, inputPlaceholder: 'Choose goal...', showCancelButton: true, confirmButtonColor: '#4CAF50' });
+        if (targetId) btnElement.closest('.slot-builder').querySelector('.ts-heading').value = targets.find(t => t.id === targetId).text;
+    } else topToast.fire({ text: 'No targets set for this date!', background: '#FF9800' });
 };
 
+// NEW UI ELEMENTS INJECTED HERE (PIN & UNCLEAR)
 function addTimeSlot(slot = {}) {
     const container = document.getElementById('timetableContainer');
     const slotId = slot.id || 'slot_' + Date.now() + Math.random().toString(36).substr(2, 5);
+    const isPinnedHTML = slot.isPinned ? 'checked' : '';
     
     const div = document.createElement('div');
     div.className = 'slot-builder';
@@ -277,21 +274,31 @@ function addTimeSlot(slot = {}) {
             <div style="flex: 0 0 100px;"><label style="font-size:12px;">Start Time</label><input type="time" class="ts-time" value="${slot.time || ''}" required></div>
             <div style="flex: 1;">
                 <label style="font-size:12px; display:flex; justify-content:space-between; align-items:center;">
-                    Topic Heading 
-                    <span style="color:#FF9800; cursor:pointer; font-weight:bold;" onclick="autofillHeading(this)">🎯 Use Target</span>
+                    Topic Heading <span style="color:#FF9800; cursor:pointer; font-weight:bold;" onclick="autofillHeading(this)">🎯 Use Target</span>
                 </label>
                 <input type="text" class="ts-heading" value="${slot.heading || ''}" placeholder="E.g., Math Study" required>
             </div>
         </div>
-        <label style="font-size:12px; margin-top:5px; display:block;">Description / Text</label>
+        
+        <div style="margin-top: 10px;">
+            <label style="font-size:12px; font-weight:bold; color:#FF9800; cursor:pointer;">
+                <input type="checkbox" class="ts-pin" ${isPinnedHTML}> 📌 Mark as Important
+            </label>
+        </div>
+
+        <label style="font-size:12px; margin-top:10px; display:block;">Description / Text</label>
         <textarea class="ts-desc" rows="2" placeholder="What exactly will you do?">${slot.desc || ''}</textarea>
-        <label style="font-size:12px; margin-top:5px; display:block;">Browser Link (Paste any link)</label>
+
+        <label style="font-size:12px; margin-top:10px; display:block; color:#d32f2f; font-weight:bold;">⚠️ Unclear Sub-topics (Needs Review)</label>
+        <textarea class="ts-unclear" rows="1" placeholder="Note down any confusing parts here...">${slot.unclearNotes || ''}</textarea>
+
+        <label style="font-size:12px; margin-top:10px; display:block;">Browser Link</label>
         <input type="text" class="ts-link" value="${slot.link || ''}" placeholder="google.com or https://...">
     `;
     container.appendChild(div);
 }
 
-// --- SAVE ENTRY (Day Plan) ---
+// --- SAVE ENTRY ---
 document.getElementById('entryForm').onsubmit = async (e) => {
     e.preventDefault();
     const id = document.getElementById('entryId').value;
@@ -300,7 +307,6 @@ document.getElementById('entryForm').onsubmit = async (e) => {
     
     let existing = await db.entries.where('date').equals(date).first();
     let targets = existing ? (existing.targets || []) : [];
-    if(existing && existing.target && targets.length === 0) targets = [{ id: 'legacy', text: existing.target, status: existing.targetStatus || 'pending' }];
     
     const slotElements = document.querySelectorAll('.slot-builder');
     let timetable = [];
@@ -313,32 +319,25 @@ document.getElementById('entryForm').onsubmit = async (e) => {
             desc: el.querySelector('.ts-desc').value.trim(),
             link: el.querySelector('.ts-link').value.trim(),
             status: el.querySelector('.ts-status').value,
+            isPinned: el.querySelector('.ts-pin').checked, // Extract Pin
+            unclearNotes: el.querySelector('.ts-unclear').value.trim(), // Extract Unclear
             logs: JSON.parse(el.querySelector('.ts-logs').value || '[]')
         });
     });
 
     const data = { date, targets, journal, timetable };
 
-    if (id) {
-        await db.entries.update(parseInt(id), data);
-    } else {
-        if(existing) await db.entries.update(existing.id, data);
-        else await db.entries.add(data);
-    }
+    if (id) await db.entries.update(parseInt(id), data);
+    else { if(existing) await db.entries.update(existing.id, data); else await db.entries.add(data); }
     
-    localStorage.removeItem('dayflow_draft'); // Clean draft upon successful save
+    localStorage.removeItem('dayflow_draft');
     closeForm();
     topToast.fire({ text: 'Day Saved!' });
 };
 
-// --- DELETE INSTANTLY ---
 window.deleteEntry = async (id) => {
     Swal.fire({ title: 'Delete Day?', showCancelButton: true, confirmButtonText: 'Yes, Delete', confirmButtonColor: '#d32f2f' }).then(async (res) => {
-        if(res.isConfirmed) { 
-            await db.entries.delete(parseInt(id)); 
-            closeView(); closeForm(); loadEntries(); 
-            topToast.fire({ text: 'Deleted successfully!' });
-        }
+        if(res.isConfirmed) { await db.entries.delete(parseInt(id)); closeView(); closeForm(); loadEntries(); topToast.fire({ text: 'Deleted!' }); }
     });
 };
 
@@ -349,7 +348,7 @@ async function loadEntries() {
     const query = document.getElementById('searchInput').value.toLowerCase();
     let entries = await db.entries.orderBy('date').reverse().toArray();
 
-    // DYNAMIC BUTTON TEXT UPDATE
+    // DYNAMIC BUTTON
     const todayStr = getLocalISODate();
     const todayEntry = entries.find(e => e.date === todayStr);
     const btnPlan = document.getElementById('btnPlanToday');
@@ -369,8 +368,8 @@ async function loadEntries() {
         entries = entries.filter(e => {
             const d = new Date(e.date);
             const dateStr = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toLowerCase();
-            let tgtString = e.targets ? e.targets.map(t=>t.text.toLowerCase()).join(" ") : ((e.target||"").toLowerCase());
-            const textToSearch = dateStr + " " + tgtString + " " + (e.journal||"").toLowerCase() + " " + (e.timetable ? e.timetable.map(t => t.heading.toLowerCase() + " " + t.desc.toLowerCase()).join(" ") : "");
+            let tgtString = e.targets ? e.targets.map(t=>t.text.toLowerCase()).join(" ") : "";
+            const textToSearch = dateStr + " " + tgtString + " " + (e.journal||"").toLowerCase() + " " + (e.timetable ? e.timetable.map(t => t.heading.toLowerCase() + " " + t.desc.toLowerCase() + " " + (t.unclearNotes||"").toLowerCase()).join(" ") : "");
             return textToSearch.includes(query);
         });
     }
@@ -378,16 +377,12 @@ async function loadEntries() {
     let html = "";
     entries.forEach((entry, idx) => {
         let targets = entry.targets || [];
-        if(entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending' }];
-
-        // Hide completely empty logs
         if(targets.length === 0 && (!entry.timetable || entry.timetable.length === 0) && !entry.journal) return;
 
         const bg = gradients[idx % gradients.length];
-        const d = new Date(entry.date);
-        const displayDate = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+        const displayDate = new Date(entry.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
         
-        let topicsText = (entry.timetable && entry.timetable.length) ? entry.timetable.map(t => t.heading).join(', ') : 'No topics planned.';
+        let topicsText = (entry.timetable && entry.timetable.length) ? entry.timetable.map(t => (t.isPinned ? "📌 " : "") + t.heading).join(', ') : 'No topics planned.';
         
         let targetHtml = '';
         if(targets.length > 0) {
@@ -396,7 +391,10 @@ async function loadEntries() {
                 let strike = t.status === 'failed' ? 'text-decoration: line-through; opacity: 0.7;' : '';
                 targetHtml += `
                 <div class="target-box" onclick="event.stopPropagation()">
-                    <div class="target-text" style="${strike}">🎯 ${t.text}</div>
+                    <div style="display:flex; flex-direction:column; flex:1;">
+                        <div class="target-text" style="${strike}">${t.text}</div>
+                        <div class="revision-counter" style="color:#555;">Rev: <strong>${t.revisionCount || 0}</strong></div>
+                    </div>
                     <div class="target-actions">
                         <button onclick="toggleTarget(${entry.id}, '${t.id}', 'completed', event)" class="btn-target ${t.status === 'completed' ? 'completed' : ''}">✅</button>
                         <button onclick="toggleTarget(${entry.id}, '${t.id}', 'failed', event)" class="btn-target ${t.status === 'failed' ? 'failed' : ''}">❌</button>
@@ -406,33 +404,24 @@ async function loadEntries() {
             targetHtml += `</div>`;
         }
         
-        html += `
-        <div class="entry-card" style="background: ${bg}" onclick="openDayView(${entry.id})">
-            <h3>${displayDate}</h3>
-            <p style="margin-bottom: 5px;"><strong>Topics:</strong> ${topicsText}</p>
-            ${targetHtml}
+        html += `<div class="entry-card" style="background: ${bg}" onclick="openDayView(${entry.id})">
+            <h3>${displayDate}</h3><p style="margin-bottom: 5px;"><strong>Topics:</strong> ${topicsText}</p>${targetHtml}
         </div>`;
     });
 
     document.getElementById('entryList').innerHTML = html || "<p style='text-align:center; color:#888;'>No entries found.</p>";
 }
-
 document.getElementById('searchInput').oninput = loadEntries;
 
 // --- DAY VIEW & TIMERS ---
 async function openDayView(id) {
     const entry = await db.entries.get(id);
     if(!entry) return;
-    
     currentOpenedEntryId = id;
     document.getElementById('viewModal').classList.remove('hidden');
     document.body.style.overflow = 'hidden';
-    
-    const d = new Date(entry.date);
-    document.getElementById('viewTitle').innerText = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-    
+    document.getElementById('viewTitle').innerText = new Date(entry.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
     document.getElementById('btnDeleteDayView').onclick = () => deleteEntry(entry.id);
-    
     document.getElementById('btnEditDay').onclick = () => { editEntry(entry); };
 
     renderDayViewHTML(entry);
@@ -442,20 +431,24 @@ async function openDayView(id) {
 
 function renderDayViewHTML(entry) {
     let html = ``;
-    
     let targets = entry.targets || [];
-    if(entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending' }];
 
     if(targets.length > 0) {
         html += `<div class="section-card" style="margin-bottom: 20px; border-left: 4px solid #FF9800;">
-            <h4 style="margin-bottom:10px;">🎯 Targets</h4>
-            <div class="targets-container">`;
-        
+            <h4 style="margin-bottom:10px;">🎯 Targets</h4><div class="targets-container">`;
         targets.forEach(t => {
             let strike = t.status === 'failed' ? 'text-decoration: line-through; opacity: 0.6;' : '';
             html += `
             <div class="target-box view-mode">
-                <div class="target-text" style="${strike}">${t.text}</div>
+                <div style="display:flex; flex-direction:column; flex:1;">
+                    <div class="target-text" style="${strike}">${t.text}</div>
+                    <div class="revision-counter">
+                        Rev: 
+                        <button onclick="updateRevision(${entry.id}, '${t.id}', -1, event)" class="btn-rev">-</button>
+                        <span style="font-weight:bold; width:12px; text-align:center;">${t.revisionCount || 0}</span>
+                        <button onclick="updateRevision(${entry.id}, '${t.id}', 1, event)" class="btn-rev">+</button>
+                    </div>
+                </div>
                 <div class="target-actions">
                     <button onclick="toggleTarget(${entry.id}, '${t.id}', 'completed', event)" class="btn-target ${t.status === 'completed' ? 'completed' : ''}">✅</button>
                     <button onclick="toggleTarget(${entry.id}, '${t.id}', 'failed', event)" class="btn-target ${t.status === 'failed' ? 'failed' : ''}">❌</button>
@@ -466,22 +459,19 @@ function renderDayViewHTML(entry) {
         html += `</div></div>`;
     }
 
-    if(entry.journal) {
-        html += `<div class="section-card" style="margin-bottom: 20px;">
-            <h4>📖 Notes</h4>
-            <div style="white-space:pre-wrap; font-size:14px; color:#444; margin-top:5px;">${entry.journal}</div>
-        </div>`;
-    }
+    if(entry.journal) html += `<div class="section-card" style="margin-bottom: 20px;"><h4>📖 Notes</h4><div style="white-space:pre-wrap; font-size:14px; color:#444; margin-top:5px;">${entry.journal}</div></div>`;
 
     if(entry.timetable) {
         entry.timetable.forEach(slot => {
             let formattedLink = slot.link;
-            if(formattedLink && !formattedLink.startsWith('http://') && !formattedLink.startsWith('https://')) formattedLink = 'https://' + formattedLink;
+            if(formattedLink && !formattedLink.startsWith('http')) formattedLink = 'https://' + formattedLink;
             let linkHtml = formattedLink ? `<a href="${formattedLink}" target="_blank" class="view-link">🔗 Open Topic Link</a>` : '';
             
-            let activeClass = slot.status === 'active' ? 'timer-active' : '';
-            let idleClass = slot.status === 'paused' ? 'timer-idle' : '';
-            
+            // RENDERING THE PIN BADGE & UNCLEAR HIGHLIGHT
+            let pinnedClass = slot.isPinned ? 'pinned-topic' : '';
+            let pinBadge = slot.isPinned ? '<span style="background:#FFC107; color:#000; font-size:10px; padding:2px 6px; border-radius:10px; vertical-align:middle; margin-left:5px;">📌 PINNED</span>' : '';
+            let unclearHtml = slot.unclearNotes ? `<div class="unclear-box"><strong>⚠️ Needs Review:</strong> ${slot.unclearNotes}</div>` : '';
+
             let logsHtml = '';
             if(slot.logs && slot.logs.length > 0) {
                 logsHtml = `<div class="timer-logs"><strong>History:</strong><br>`;
@@ -495,24 +485,18 @@ function renderDayViewHTML(entry) {
             }
 
             html += `
-            <div class="view-topic">
+            <div class="view-topic ${pinnedClass}">
                 <p style="font-weight:bold; color:#667eea; margin-bottom:5px;">🕒 ${slot.time}</p>
-                <h4>${slot.heading}</h4>
+                <h4>${slot.heading} ${pinBadge}</h4>
                 <p>${slot.desc}</p>
+                ${unclearHtml}
                 ${linkHtml}
                 
                 <div style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 15px;">
                     <div class="timer-dashboard">
-                        <div class="stat-box active-box ${activeClass}">
-                            <span class="stat-label">Active Time</span>
-                            <div id="active_display_${slot.id}" class="timer-display">00:00:00</div>
-                        </div>
-                        <div class="stat-box idle-box ${idleClass}">
-                            <span class="stat-label">Idle Time</span>
-                            <div id="idle_display_${slot.id}" class="timer-display">00:00:00</div>
-                        </div>
+                        <div class="stat-box active-box ${slot.status === 'active' ? 'timer-active' : ''}"><span class="stat-label">Active Time</span><div id="active_display_${slot.id}" class="timer-display">00:00:00</div></div>
+                        <div class="stat-box idle-box ${slot.status === 'paused' ? 'timer-idle' : ''}"><span class="stat-label">Idle Time</span><div id="idle_display_${slot.id}" class="timer-display">00:00:00</div></div>
                     </div>
-
                     <div class="timer-controls">
                         ${slot.status !== 'finished' ? 
                             `<button style="background:#4CAF50; color:white;" onclick="handleTimer('${slot.id}', 'started')">▶️ Start/Resume</button>
@@ -530,7 +514,6 @@ function renderDayViewHTML(entry) {
     updateLiveTimers(entry); 
 }
 
-// --- TIMER ENGINE ---
 function formatTime(ms) {
     let totalSeconds = Math.floor(ms / 1000);
     let hours = Math.floor(totalSeconds / 3600);
@@ -543,21 +526,11 @@ function updateLiveTimers(entry) {
     const now = Date.now();
     if(entry.timetable) {
         entry.timetable.forEach(slot => {
-            let activeMs = 0; 
-            let idleMs = 0; 
-            let lastStart = null; 
-            let lastPause = null;
-            
+            let activeMs = 0; let idleMs = 0; let lastStart = null; let lastPause = null;
             slot.logs.forEach(log => {
-                if (log.type === 'started') {
-                    lastStart = log.time;
-                    if (lastPause !== null) { idleMs += (log.time - lastPause); lastPause = null; }
-                } else if (log.type === 'paused' || log.type === 'finished') {
-                    if (lastStart !== null) { activeMs += (log.time - lastStart); lastStart = null; }
-                    if (log.type === 'paused') lastPause = log.time;
-                }
+                if (log.type === 'started') { lastStart = log.time; if (lastPause !== null) { idleMs += (log.time - lastPause); lastPause = null; } } 
+                else if (log.type === 'paused' || log.type === 'finished') { if (lastStart !== null) { activeMs += (log.time - lastStart); lastStart = null; } if (log.type === 'paused') lastPause = log.time; }
             });
-            
             if (slot.status === 'active' && lastStart !== null) activeMs += (now - lastStart);
             else if (slot.status === 'paused' && lastPause !== null) idleMs += (now - lastPause);
 
@@ -585,6 +558,4 @@ window.handleTimer = async (slotId, action) => {
 };
 
 // Start App sequence
-loadEntries().then(() => {
-    restoreDraft(); // Check if a form was left open!
-});
+loadEntries().then(() => { restoreDraft(); });
