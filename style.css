@@ -70,7 +70,7 @@ textarea { resize: vertical; }
 .form-actions button { flex: 1; padding: 14px 0; font-size: 16px; border-radius: 10px; }
 .mini-btn { cursor: pointer; background: #eee; padding: 4px 8px; border-radius: 6px; font-size: 12px; color: #555; }
 
-/* DAY VIEW SPECIFICS, TIMERS, & NEW BADGES */
+/* DAY VIEW SPECIFICS, TIMERS, & BADGES */
 .view-topic { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-left: 5px solid #667eea; }
 .view-topic.pinned-topic { border-left: 5px solid #FFC107; background-color: #FFFDE7; }
 .view-topic h4 { margin: 0 0 5px 0; font-size: 18px; color: #333; }

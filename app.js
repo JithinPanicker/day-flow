@@ -35,8 +35,8 @@ function saveDraft() {
                 desc: el.querySelector('.ts-desc').value,
                 link: el.querySelector('.ts-link').value,
                 status: el.querySelector('.ts-status').value,
-                isPinned: el.querySelector('.ts-pin').checked, // NEW
-                unclearNotes: el.querySelector('.ts-unclear').value, // NEW
+                isPinned: el.querySelector('.ts-pin').checked, 
+                unclearNotes: el.querySelector('.ts-unclear').value, 
                 logs: JSON.parse(el.querySelector('.ts-logs').value || '[]')
             });
         });
@@ -88,17 +88,26 @@ window.addEventListener('pagehide', saveDraft);
 // ==========================================
 
 
+// --- DYNAMIC DATE SYNC LOGIC ---
+window.syncHomeDate = () => {
+    loadHomeTarget();
+    loadEntries(); // Will update the dynamic button
+};
+
 // --- TARGET LOGIC & REVISIONS ---
 async function loadHomeTarget() {
-    const todayStr = getLocalISODate();
-    const entry = await db.entries.where('date').equals(todayStr).first();
+    let dateInput = document.getElementById('homeTargetDate');
+    if (!dateInput.value) dateInput.value = getLocalISODate();
+    const selectedDate = dateInput.value;
+
+    const entry = await db.entries.where('date').equals(selectedDate).first();
     const listDiv = document.getElementById('homeTargetsList');
     
     let targets = entry ? (entry.targets || []) : [];
     if (entry && entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: entry.targetStatus || 'pending', revisionCount: 0 }];
 
     if(targets.length === 0) {
-        listDiv.innerHTML = "<p style='color:#888; font-size:13px; margin:0;'>No targets set yet.</p>";
+        listDiv.innerHTML = "<p style='color:#888; font-size:13px; margin:0;'>No targets set for this date.</p>";
         return;
     }
 
@@ -132,9 +141,8 @@ window.addHomeTarget = async () => {
     const text = document.getElementById('homeDailyTarget').value.trim();
     if(!text) return;
     
-    const todayStr = getLocalISODate();
-    let entry = await db.entries.where('date').equals(todayStr).first();
-    // NEW: Initialize Revision Count to 0
+    const selectedDate = document.getElementById('homeTargetDate').value || getLocalISODate();
+    let entry = await db.entries.where('date').equals(selectedDate).first();
     const newTarget = { id: Date.now().toString(), text: text, status: 'pending', revisionCount: 0 };
     
     if(entry) {
@@ -142,7 +150,7 @@ window.addHomeTarget = async () => {
         entry.targets.push(newTarget);
         await db.entries.put(entry);
     } else {
-        await db.entries.add({ date: todayStr, targets: [newTarget], journal: '', timetable: [] });
+        await db.entries.add({ date: selectedDate, targets: [newTarget], journal: '', timetable: [] });
     }
     
     document.getElementById('homeDailyTarget').value = '';
@@ -158,7 +166,7 @@ window.updateRevision = async (entryId, targetId, delta, event) => {
     const target = targets.find(t => t.id === targetId);
     
     if(target) {
-        target.revisionCount = Math.max(0, (target.revisionCount || 0) + delta); // Prevents negative numbers
+        target.revisionCount = Math.max(0, (target.revisionCount || 0) + delta); 
         entry.targets = targets;
         await db.entries.put(entry);
         loadHomeTarget();
@@ -196,11 +204,33 @@ window.deleteTarget = async (entryId, targetId, event) => {
 };
 
 // --- FORM UI HELPERS & DYNAMIC BUTTON ---
-window.openTodayForm = async () => {
-    const todayStr = getLocalISODate();
-    const existing = await db.entries.where('date').equals(todayStr).first();
+window.openPlanForm = async () => {
+    const targetDate = document.getElementById('homeTargetDate').value || getLocalISODate();
+    document.getElementById('entryDate').value = targetDate; // Sync form to home screen selection
+    
+    const existing = await db.entries.where('date').equals(targetDate).first();
     if (existing) editEntry(existing);
-    else openForm(null);
+    else openForm(null, targetDate);
+};
+
+window.loadFormDataForDate = async () => {
+    const selectedDate = document.getElementById('entryDate').value;
+    if(!selectedDate) return;
+    
+    const existing = await db.entries.where('date').equals(selectedDate).first();
+    if (existing) {
+        document.getElementById('entryId').value = existing.id;
+        document.getElementById('journalBody').value = existing.journal || "";
+        document.getElementById('timetableContainer').innerHTML = "";
+        if(existing.timetable && existing.timetable.length > 0) existing.timetable.forEach(t => addTimeSlot(t));
+        else addTimeSlot();
+    } else {
+        // Clear form for a fresh new day
+        document.getElementById('entryId').value = "";
+        document.getElementById('journalBody').value = "";
+        document.getElementById('timetableContainer').innerHTML = "";
+        addTimeSlot();
+    }
 };
 
 window.editEntry = (entry) => {
@@ -216,14 +246,15 @@ window.editEntry = (entry) => {
     document.body.style.overflow = 'hidden';
 };
 
-function openForm(id = null) {
+function openForm(id = null, specificDate = null) {
     document.getElementById('formModal').classList.remove('hidden');
     document.getElementById('viewModal').classList.add('hidden');
     document.body.style.overflow = 'hidden';
+    
     if(!id) {
         document.getElementById('entryForm').reset();
         document.getElementById('entryId').value = "";
-        document.getElementById('entryDate').value = getLocalISODate();
+        document.getElementById('entryDate').value = specificDate || getLocalISODate();
         document.getElementById('timetableContainer').innerHTML = '';
         addTimeSlot();
     }
@@ -246,6 +277,8 @@ window.autofillHeading = async (btnElement) => {
     const selectedDate = document.getElementById('entryDate').value;
     const entry = await db.entries.where('date').equals(selectedDate).first();
     let targets = entry ? (entry.targets || []) : [];
+    if(entry && entry.target && targets.length === 0) targets = [{ id: 'legacy', text: entry.target, status: 'pending' }];
+    
     if (targets.length === 1) {
         btnElement.closest('.slot-builder').querySelector('.ts-heading').value = targets[0].text;
     } else if (targets.length > 1) {
@@ -256,7 +289,6 @@ window.autofillHeading = async (btnElement) => {
     } else topToast.fire({ text: 'No targets set for this date!', background: '#FF9800' });
 };
 
-// NEW UI ELEMENTS INJECTED HERE (PIN & UNCLEAR)
 function addTimeSlot(slot = {}) {
     const container = document.getElementById('timetableContainer');
     const slotId = slot.id || 'slot_' + Date.now() + Math.random().toString(36).substr(2, 5);
@@ -319,8 +351,8 @@ document.getElementById('entryForm').onsubmit = async (e) => {
             desc: el.querySelector('.ts-desc').value.trim(),
             link: el.querySelector('.ts-link').value.trim(),
             status: el.querySelector('.ts-status').value,
-            isPinned: el.querySelector('.ts-pin').checked, // Extract Pin
-            unclearNotes: el.querySelector('.ts-unclear').value.trim(), // Extract Unclear
+            isPinned: el.querySelector('.ts-pin').checked, 
+            unclearNotes: el.querySelector('.ts-unclear').value.trim(), 
             logs: JSON.parse(el.querySelector('.ts-logs').value || '[]')
         });
     });
@@ -341,24 +373,34 @@ window.deleteEntry = async (id) => {
     });
 };
 
-// --- HOME SCREEN LOAD ---
+// --- HOME SCREEN LOAD & SORTING ---
 async function loadEntries() {
+    // Ensures target picker defaults to today on first load
+    let dateInput = document.getElementById('homeTargetDate');
+    if (!dateInput.value) dateInput.value = getLocalISODate();
+    
     loadHomeTarget();
     
     const query = document.getElementById('searchInput').value.toLowerCase();
+    
+    // Sorts the timeline: Future dates at top, Past dates at bottom
     let entries = await db.entries.orderBy('date').reverse().toArray();
 
-    // DYNAMIC BUTTON
-    const todayStr = getLocalISODate();
-    const todayEntry = entries.find(e => e.date === todayStr);
+    // DYNAMIC BUTTON TEXT UPDATE
+    const targetDate = document.getElementById('homeTargetDate').value;
+    const currentEntry = entries.find(e => e.date === targetDate);
     const btnPlan = document.getElementById('btnPlanToday');
+    
     if (btnPlan) {
-        if (todayEntry && ((todayEntry.timetable && todayEntry.timetable.length > 0) || todayEntry.journal)) {
-            btnPlan.innerHTML = "📝 Edit Plan & Log Today";
+        const dObj = new Date(targetDate);
+        const shortDate = dObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        
+        if (currentEntry && ((currentEntry.timetable && currentEntry.timetable.length > 0) || currentEntry.journal)) {
+            btnPlan.innerHTML = `📝 Edit Plan (${shortDate})`;
             btnPlan.style.background = "linear-gradient(135deg, #FF9800 0%, #F44336 100%)";
             btnPlan.style.boxShadow = "0 4px 15px rgba(244, 67, 54, 0.3)";
         } else {
-            btnPlan.innerHTML = "📝 Plan & Log Today";
+            btnPlan.innerHTML = `📝 Plan Day (${shortDate})`;
             btnPlan.style.background = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)";
             btnPlan.style.boxShadow = "0 4px 15px rgba(118, 75, 162, 0.3)";
         }
@@ -558,4 +600,4 @@ window.handleTimer = async (slotId, action) => {
 };
 
 // Start App sequence
-loadEntries().then(() => { restoreDraft(); });
+window.onload = () => { loadEntries().then(() => restoreDraft()); };

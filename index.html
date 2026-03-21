@@ -21,7 +21,11 @@
 
     <div class="container">
         <div class="home-target-card">
-            <h4 style="margin: 0 0 10px 0; color: #E65100;">🎯 Today's Targets</h4>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h4 style="margin: 0; color: #E65100;">🎯 Targets</h4>
+                <input type="date" id="homeTargetDate" onchange="syncHomeDate()" style="width: auto; padding: 5px 8px; margin: 0; border: 1px solid #FFCC80; border-radius: 6px; color: #E65100; font-weight: bold; background: #FFF3E0; font-family: inherit;">
+            </div>
+            
             <div style="display: flex; gap: 8px; margin-bottom: 15px;">
                 <input type="text" id="homeDailyTarget" placeholder="Add a new goal..." style="margin: 0;">
                 <button onclick="addHomeTarget()" style="background: #FF9800; color: white; padding: 10px 20px;">Add</button>
@@ -30,7 +34,7 @@
                 </div>
         </div>
 
-        <button id="btnPlanToday" onclick="openTodayForm()" class="btn-new">📝 Plan & Log Today</button>
+        <button id="btnPlanToday" onclick="openPlanForm()" class="btn-new">📝 Plan & Log</button>
 
         <div class="search-box">
             <input type="text" id="searchInput" placeholder="🔍 Search by day, target, or keywords..." autocomplete="off">
@@ -66,7 +70,7 @@
                 
                 <div class="section-card" style="margin-bottom: 15px;">
                     <label style="font-weight: bold; color: #555;">Date:</label>
-                    <input type="date" id="entryDate" required style="margin-top: 5px;">
+                    <input type="date" id="entryDate" required style="margin-top: 5px;" onchange="loadFormDataForDate()">
                 </div>
 
                 <div class="section-card timetable-card">
